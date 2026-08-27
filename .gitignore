@@ -1,0 +1,25 @@
+# Dependencias
+node_modules/
+
+# Variables de entorno (nunca versionar secretos reales)
+.env
+.env.local
+.env.*.local
+
+# Build de producción del frontend (se genera en el Dockerfile)
+frontend/build/
+
+# Evidencia fotográfica y logs subidos en runtime (viven en el volumen Docker)
+backend/uploads/
+backend/src/logs/
+backend/logs/
+
+# Prisma
+backend/prisma/*.db
+
+# Editor / SO
+.DS_Store
+.vscode/
+.idea/
+*.log
+npm-debug.log*

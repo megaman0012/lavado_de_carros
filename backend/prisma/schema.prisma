@@ -1,0 +1,275 @@
+// Schema de Base de Datos - Sistema de Lavado de Carros
+// Dominio: estacionamientos, reservas de lavado, agenda con bloqueo de franjas
+// Roles: admin | operador | lavador | cliente
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== USUARIOS Y CLIENTES ====================
+
+model Usuario {
+  id         Int      @id @default(autoincrement())
+  username   String   @unique
+  password   String
+  rol        String   @default("cliente") // admin | operador | lavador | cliente
+  id_cliente Int?     @unique
+  id_lavador Int?     @unique
+  estado     String   @default("activo")
+  createdAt  DateTime @default(now())
+
+  cliente Cliente? @relation(fields: [id_cliente], references: [id])
+  lavador Lavador? @relation(fields: [id_lavador], references: [id])
+}
+
+model Cliente {
+  id        Int       @id @default(autoincrement())
+  nombre    String
+  cedula    String?   @unique
+  telefono  String?
+  email     String?   @unique
+  estado    String    @default("activo")
+  createdAt DateTime  @default(now())
+
+  usuario  Usuario?
+  vehiculos Vehiculo[]
+  reservas  Reserva[]
+}
+
+model Vehiculo {
+  id         Int     @id @default(autoincrement())
+  id_cliente Int
+  placa      String  @unique
+  marca      String?
+  modelo     String?
+  color      String?
+  tipo       String? // sedan | suv | camioneta | moto
+  estado     String  @default("activo")
+
+  cliente  Cliente   @relation(fields: [id_cliente], references: [id])
+  reservas Reserva[]
+
+  @@index([id_cliente])
+}
+
+// ==================== SITIOS Y ESPACIOS ====================
+
+model Estacionamiento {
+  id               Int     @id @default(autoincrement())
+  nombre           String
+  direccion        String?
+  ciudad           String?
+  contacto         String?
+  horario_apertura String  @default("07:00")
+  horario_cierre   String  @default("18:00")
+  admite_expreso   Boolean @default(true)
+  // Configuración de agenda por sitio:
+  // capacidad_expreso = lavados simultáneos en este sitio (0 = usar lavadores activos globales)
+  capacidad_expreso   Int @default(0)
+  // duracion_franja_min = granularidad de la grilla de horas (0/30/60; default global 60)
+  duracion_franja_min Int @default(60)
+  estado           String  @default("activo")
+
+  plazas        Plaza[]
+  reservas      Reserva[]
+  suscripciones Suscripcion[]
+
+  @@index([ciudad])
+}
+
+// ==================== PLANES PARA EDIFICIOS/CONDOMINIOS ====================
+// El plan se contrata para un estacionamiento (edificio/condominio): cubre
+// N lavados expreso al mes compartidos entre todos los residentes que reservan ahí.
+model Plan {
+  id                Int      @id @default(autoincrement())
+  nombre            String
+  descripcion       String?
+  precio_mensual    Float
+  lavados_incluidos Int // total del sitio, por mes
+  modalidad         String   @default("expreso") // expreso | profunda
+  estado            String   @default("activo")
+  createdAt         DateTime @default(now())
+
+  suscripciones Suscripcion[]
+}
+
+model Suscripcion {
+  id                 Int       @id @default(autoincrement())
+  id_estacionamiento Int
+  id_plan            Int
+  fecha_inicio       DateTime  @default(now())
+  fecha_cancelacion  DateTime?
+  estado             String    @default("activa") // activa | cancelada
+
+  estacionamiento Estacionamiento @relation(fields: [id_estacionamiento], references: [id])
+  plan            Plan            @relation(fields: [id_plan], references: [id])
+  reservas        Reserva[]
+
+  @@index([id_estacionamiento])
+}
+
+model Plaza {
+  id                 Int     @id @default(autoincrement())
+  id_estacionamiento Int
+  codigo             String // "P-01", "B-01"...
+  tipo               String  @default("estacionamiento") // estacionamiento | bahia_lavado
+  estado             String  @default("disponible") // disponible | ocupada | mantenimiento
+
+  estacionamiento Estacionamiento @relation(fields: [id_estacionamiento], references: [id])
+  reservas        Reserva[]
+
+  @@unique([id_estacionamiento, codigo])
+}
+
+// ==================== CATÁLOGO DE SERVICIOS ====================
+
+model TipoServicio {
+  id            Int     @id @default(autoincrement())
+  nombre        String
+  descripcion   String?
+  modalidad     String // expreso | profunda
+  duracion_min  Int     @default(60)
+  precio        Float   @default(0)
+  activo        Boolean @default(true)
+  orden_display Int     @default(0)
+
+  reservas Reserva[]
+}
+
+// ==================== PERSONAL ====================
+
+model Lavador {
+  id      Int     @id @default(autoincrement())
+  nombre  String
+  cedula  String? @unique
+  telefono String?
+  estado  String  @default("activo")
+
+  usuario      Usuario?
+  asignaciones AsignacionAgenda[]
+}
+
+// ==================== NÚCLEO OPERATIVO ====================
+
+// Estados: solicitada → confirmada → en_proceso → completada | cancelada | no_asistio
+model Reserva {
+  id                 Int      @id @default(autoincrement())
+  codigo             String   @unique // RES-2026-00001
+  id_cliente         Int
+  id_vehiculo        Int
+  id_tipo_servicio   Int
+  id_estacionamiento Int?
+  id_plaza           Int?
+  id_suscripcion     Int?
+  modalidad          String // expreso | profunda
+  fecha              DateTime
+  hora_inicio        String // "09:00"
+  hora_fin           String // "10:30"
+  estado             String   @default("solicitada")
+  observaciones      String?
+  precio_final       Float?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  cliente         Cliente            @relation(fields: [id_cliente], references: [id])
+  vehiculo        Vehiculo           @relation(fields: [id_vehiculo], references: [id])
+  tipoServicio    TipoServicio       @relation(fields: [id_tipo_servicio], references: [id])
+  estacionamiento Estacionamiento?   @relation(fields: [id_estacionamiento], references: [id])
+  plaza           Plaza?             @relation(fields: [id_plaza], references: [id])
+  suscripcion     Suscripcion?       @relation(fields: [id_suscripcion], references: [id])
+  asignaciones    AsignacionAgenda[]
+  registro        RegistroLavado?
+  pagos           Pago[]
+  historial       HistorialReserva[]
+  calificacion    Calificacion?
+
+  @@index([fecha])
+  @@index([estado])
+  @@index([id_cliente])
+  @@index([id_estacionamiento])
+}
+
+// AGENDA: cada fila = franja ocupada. La disponibilidad se calcula
+// contando filas solapadas vs capacidad (lavadores o bahías).
+// id_reserva null + nota = bloqueo manual (mantiene, imprevistos).
+model AsignacionAgenda {
+  id          Int      @id @default(autoincrement())
+  id_reserva  Int?
+  id_lavador  Int?
+  fecha       DateTime
+  hora_inicio String
+  hora_fin    String
+  estado      String   @default("pendiente") // pendiente | en_proceso | completado | cancelado
+  nota        String?
+
+  reserva Reserva? @relation(fields: [id_reserva], references: [id])
+  lavador Lavador? @relation(fields: [id_lavador], references: [id])
+
+  @@index([fecha])
+  @@index([id_lavador])
+}
+
+// Evidencia del trabajo
+model RegistroLavado {
+  id             Int       @id @default(autoincrement())
+  id_reserva     Int       @unique
+  checklist      Json?
+  fotos_antes    String?
+  fotos_despues  String?
+  observaciones  String?
+  fecha_fin      DateTime?
+  createdAt      DateTime  @default(now())
+
+  reserva Reserva @relation(fields: [id_reserva], references: [id])
+}
+
+// MAPEO PARA PAGOS FUTUROS (pasarela en Fase 3)
+model Pago {
+  id         Int       @id @default(autoincrement())
+  id_reserva Int
+  monto      Float
+  metodo     String    @default("efectivo") // efectivo | transferencia | tarjeta
+  estado     String    @default("pendiente") // pendiente | aprobado | rechazado | reembolsado
+  referencia String? // id transacción pasarela
+  fecha_pago DateTime?
+  createdAt  DateTime  @default(now())
+
+  reserva Reserva @relation(fields: [id_reserva], references: [id])
+
+  @@index([estado])
+}
+
+// Auditoría de cambios de la reserva
+model HistorialReserva {
+  id              Int      @id @default(autoincrement())
+  id_reserva      Int
+  accion          String
+  estado_anterior String?
+  estado_nuevo    String?
+  motivo          String?
+  usuario         String?
+  fecha_cambio    DateTime @default(now())
+
+  reserva Reserva @relation(fields: [id_reserva], references: [id])
+
+  @@index([id_reserva])
+}
+
+// Calificación del cliente sobre el lavado (post-completado)
+model Calificacion {
+  id         Int      @id @default(autoincrement())
+  id_reserva Int      @unique
+  id_cliente Int
+  puntuacion Int // 1-5
+  comentario String?
+  createdAt  DateTime @default(now())
+
+  reserva Reserva @relation(fields: [id_reserva], references: [id])
+
+  @@index([id_cliente])
+}
