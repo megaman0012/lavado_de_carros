@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarCheck, XCircle, Camera, Info, Wrench, Wallet, Star } from 'lucide-react';
+import { CalendarCheck, XCircle, Camera, Info, Wrench, Wallet, Star, FileText } from 'lucide-react';
 import api from '../services/api';
+import { descargarActa } from '../services/descargas';
 import { Reserva } from '../types';
 
 const coloresEstado: Record<string, string> = {
@@ -53,6 +54,13 @@ const ModalEvidenciaCliente: React.FC<{ reserva: Reserva; onClose: () => void }>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold text-slate-800 mb-1">Evidencia fotográfica</h2>
         <p className="text-sm text-slate-500 mb-4">{reserva.codigo} · {reserva.tipoServicio?.nombre}</p>
+
+        {reserva.registro?.observaciones && (
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4">
+            <p className="text-xs font-semibold uppercase text-slate-400 tracking-wide mb-1">Trabajo realizado</p>
+            <p className="text-sm text-slate-600">{reserva.registro.observaciones}</p>
+          </div>
+        )}
 
         {fotosAntes.length === 0 && fotosDespues.length === 0 ? (
           <p className="text-sm text-slate-500">Todavía no hay fotos de este lavado.</p>
@@ -215,6 +223,7 @@ const MisReservas: React.FC = () => {
   const [cargando, setCargando] = useState(true);
   const [modalEvidencia, setModalEvidencia] = useState<Reserva | null>(null);
   const [modalDetalle, setModalDetalle] = useState<number | null>(null);
+  const [descargando, setDescargando] = useState<number | null>(null);
   const [modalCalificar, setModalCalificar] = useState<Reserva | null>(null);
 
   const cargar = () => {
@@ -226,6 +235,17 @@ const MisReservas: React.FC = () => {
   };
 
   useEffect(cargar, []);
+
+  const bajarActa = async (r: Reserva) => {
+    setDescargando(r.id);
+    try {
+      await descargarActa(r.id, r.codigo);
+    } catch (e: any) {
+      alert(e.message || 'No se pudo generar el acta');
+    } finally {
+      setDescargando(null);
+    }
+  };
 
   const cancelar = async (id: number) => {
     if (!window.confirm('¿Cancelar esta reserva?')) return;
@@ -282,6 +302,16 @@ const MisReservas: React.FC = () => {
                       className="flex items-center gap-1 text-sm text-purple-600 hover:text-purple-800"
                     >
                       <Camera size={16} /> Evidencia
+                    </button>
+                  )}
+                  {r.estado === 'completada' && (
+                    <button
+                      onClick={() => bajarActa(r)}
+                      disabled={descargando === r.id}
+                      title="Comprobante del servicio en PDF, con fotos"
+                      className="flex items-center gap-1 text-sm text-sky-600 hover:text-sky-800 disabled:opacity-50"
+                    >
+                      <FileText size={16} /> {descargando === r.id ? 'Generando…' : 'Acta'}
                     </button>
                   )}
                   {['solicitada', 'confirmada'].includes(r.estado) && (

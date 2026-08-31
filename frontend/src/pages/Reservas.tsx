@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { CalendarCheck, CheckCircle2, PlayCircle, Flag, XCircle, UserPlus, Camera, Trash2, Wallet } from 'lucide-react';
+import { CalendarCheck, CheckCircle2, PlayCircle, Flag, XCircle, UserPlus, Camera, Trash2, Wallet, FileText, Plus, Paperclip } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { descargarActa } from '../services/descargas';
+import ModalNuevaReserva from '../components/ModalNuevaReserva';
 import { Reserva, Lavador } from '../types';
 
 const coloresEstado: Record<string, string> = {
@@ -85,12 +87,11 @@ const ModalAsignar: React.FC<{ reserva: Reserva; onClose: () => void; onDone: ()
 const ModalEvidencia: React.FC<{ reserva: Reserva; onClose: () => void; onDone: () => void }> = ({ reserva, onClose, onDone }) => {
   const [registro, setRegistro] = useState(reserva.registro || null);
   const [tipo, setTipo] = useState<'antes' | 'despues'>('antes');
+  const [observaciones, setObservaciones] = useState(reserva.registro?.observaciones || '');
   const [subiendo, setSubiendo] = useState(false);
+  const [guardandoNota, setGuardandoNota] = useState(false);
+  const [notaGuardada, setNotaGuardada] = useState(false);
   const [error, setError] = useState('');
-
-  const recargar = () => {
-    api.get(`/reservas/${reserva.id}`).then((r) => setRegistro(r.data.registro)).catch(() => {});
-  };
 
   const subir = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -100,6 +101,8 @@ const ModalEvidencia: React.FC<{ reserva: Reserva; onClose: () => void; onDone: 
       const fd = new FormData();
       fd.append('tipo', tipo);
       Array.from(files).forEach((f) => fd.append('fotos', f));
+      // La descripción viaja con las fotos: es un solo guardado para el operador
+      if (observaciones.trim()) fd.append('observaciones', observaciones.trim());
       const r = await api.post(`/reservas/${reserva.id}/evidencia`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
@@ -109,6 +112,28 @@ const ModalEvidencia: React.FC<{ reserva: Reserva; onClose: () => void; onDone: 
       setError(e.message);
     } finally {
       setSubiendo(false);
+    }
+  };
+
+  const guardarNota = async () => {
+    if (!observaciones.trim()) return;
+    setGuardandoNota(true);
+    setError('');
+    setNotaGuardada(false);
+    try {
+      const fd = new FormData();
+      fd.append('observaciones', observaciones.trim());
+      const r = await api.post(`/reservas/${reserva.id}/evidencia`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setRegistro(r.data);
+      setNotaGuardada(true);
+      setTimeout(() => setNotaGuardada(false), 2500);
+      onDone();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setGuardandoNota(false);
     }
   };
 
@@ -149,6 +174,23 @@ const ModalEvidencia: React.FC<{ reserva: Reserva; onClose: () => void; onDone: 
         </label>
         {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
 
+        <div className="mt-4">
+          <label className="text-xs font-semibold uppercase text-slate-400 tracking-wide">
+            Descripción del trabajo
+          </label>
+          <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} rows={3}
+            placeholder="Qué se hizo, estado en que se recibió el vehículo, novedades…"
+            className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+          <div className="flex items-center gap-2 mt-1">
+            <button onClick={guardarNota} disabled={guardandoNota || !observaciones.trim()}
+              className="text-sm px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+              {guardandoNota ? 'Guardando…' : 'Guardar descripción'}
+            </button>
+            {notaGuardada && <span className="text-xs text-green-600">Guardada</span>}
+            <span className="text-xs text-slate-400 ml-auto">Sale en el acta de servicio</span>
+          </div>
+        </div>
+
         <div className="mt-5 space-y-4">
           <div>
             <p className="text-xs font-semibold uppercase text-slate-400 tracking-wide">Antes</p>
@@ -175,6 +217,7 @@ const ModalPago: React.FC<{ reserva: Reserva; onClose: () => void; onDone: () =>
   const [monto, setMonto] = useState('');
   const [metodo, setMetodo] = useState<'efectivo' | 'transferencia'>('efectivo');
   const [referencia, setReferencia] = useState('');
+  const [comprobante, setComprobante] = useState<File | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
 
@@ -195,8 +238,15 @@ const ModalPago: React.FC<{ reserva: Reserva; onClose: () => void; onDone: () =>
     setGuardando(true);
     setError('');
     try {
-      await api.post(`/reservas/${reserva.id}/pagos`, { monto: parseFloat(monto), metodo, referencia: referencia || undefined });
+      // multipart siempre: el comprobante es opcional pero el endpoint es el mismo
+      const fd = new FormData();
+      fd.append('monto', monto);
+      fd.append('metodo', metodo);
+      if (referencia) fd.append('referencia', referencia);
+      if (comprobante) fd.append('comprobante', comprobante);
+      await api.post(`/reservas/${reserva.id}/pagos`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       setReferencia('');
+      setComprobante(null);
       recargar();
       onDone();
     } catch (err: any) {
@@ -240,6 +290,12 @@ const ModalPago: React.FC<{ reserva: Reserva; onClose: () => void; onDone: () =>
                   <span className="text-slate-400"> · {p.metodo}</span>
                   {p.referencia && <span className="text-slate-400"> · {p.referencia}</span>}
                   <span className="block text-xs text-slate-400">{p.fecha_pago && new Date(p.fecha_pago).toLocaleString()}</span>
+                  {p.comprobante_url && (
+                    <a href={p.comprobante_url} target="_blank" rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-sky-600 hover:underline mt-0.5">
+                      <Paperclip size={12} /> Ver comprobante
+                    </a>
+                  )}
                 </div>
                 {usuario?.rol === 'admin' && (
                   <button onClick={() => anular(p.id)} title="Anular pago" className="text-red-500 hover:text-red-700">
@@ -264,7 +320,20 @@ const ModalPago: React.FC<{ reserva: Reserva; onClose: () => void; onDone: () =>
               </select>
             </div>
             <input value={referencia} onChange={(e) => setReferencia(e.target.value)}
-              placeholder="Referencia (opcional)" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+              placeholder={metodo === 'transferencia' ? 'N.° de transferencia (opcional)' : 'Referencia (opcional)'}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+
+            <label className="block border-2 border-dashed border-slate-300 rounded-lg p-3 text-center text-sm cursor-pointer text-slate-500 hover:border-sky-400 hover:text-sky-600">
+              <Paperclip size={16} className="inline mr-1 -mt-0.5" />
+              {comprobante ? comprobante.name : 'Adjuntar comprobante (imagen o PDF, opcional)'}
+              <input type="file" accept="image/*,application/pdf" hidden
+                onChange={(e) => setComprobante(e.target.files?.[0] || null)} />
+            </label>
+            {comprobante && (
+              <button type="button" onClick={() => setComprobante(null)}
+                className="text-xs text-slate-400 hover:text-red-500 -mt-1">Quitar archivo</button>
+            )}
+
             {error && <p className="text-sm text-red-600">{error}</p>}
             <button type="submit" disabled={guardando}
               className="w-full bg-sky-600 text-white py-2 rounded-lg text-sm hover:bg-sky-700 disabled:opacity-50">
@@ -294,6 +363,8 @@ const Reservas: React.FC = () => {
   const [modalAsignar, setModalAsignar] = useState<Reserva | null>(null);
   const [modalEvidencia, setModalEvidencia] = useState<Reserva | null>(null);
   const [modalPago, setModalPago] = useState<Reserva | null>(null);
+  const [modalNueva, setModalNueva] = useState(false);
+  const [descargando, setDescargando] = useState<number | null>(null);
 
   const cargar = useCallback(() => {
     setCargando(true);
@@ -309,6 +380,17 @@ const Reservas: React.FC = () => {
 
   useEffect(cargar, [cargar]);
 
+  const bajarActa = async (r: Reserva) => {
+    setDescargando(r.id);
+    try {
+      await descargarActa(r.id, r.codigo);
+    } catch (e: any) {
+      alert(e.message || 'No se pudo generar el acta');
+    } finally {
+      setDescargando(null);
+    }
+  };
+
   const cambiar = async (id: number, accion: string) => {
     try {
       await api.put(`/reservas/${id}/${accion}`);
@@ -320,9 +402,15 @@ const Reservas: React.FC = () => {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-        <CalendarCheck className="text-sky-600" /> Reservas
-      </h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+          <CalendarCheck className="text-sky-600" /> Reservas
+        </h1>
+        <button onClick={() => setModalNueva(true)}
+          className="flex items-center gap-2 bg-sky-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-sky-700">
+          <Plus size={17} /> Nueva reserva
+        </button>
+      </div>
 
       {/* Filtros */}
       <div className="bg-white rounded-xl shadow-sm p-4 mb-6 flex flex-wrap gap-3">
@@ -400,6 +488,11 @@ const Reservas: React.FC = () => {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
+                        <button onClick={() => bajarActa(r)} disabled={descargando === r.id}
+                          title="Acta de servicio (PDF con fotos)"
+                          className="p-1.5 text-slate-500 hover:bg-slate-100 rounded disabled:opacity-40">
+                          <FileText size={18} />
+                        </button>
                         {!['cancelada', 'no_asistio'].includes(r.estado) && (
                           <button onClick={() => setModalPago(r)} title="Pagos" className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded">
                             <Wallet size={18} />
@@ -448,6 +541,7 @@ const Reservas: React.FC = () => {
       {modalAsignar && <ModalAsignar reserva={modalAsignar} onClose={() => setModalAsignar(null)} onDone={cargar} />}
       {modalEvidencia && <ModalEvidencia reserva={modalEvidencia} onClose={() => setModalEvidencia(null)} onDone={cargar} />}
       {modalPago && <ModalPago reserva={modalPago} onClose={() => setModalPago(null)} onDone={cargar} />}
+      {modalNueva && <ModalNuevaReserva onClose={() => setModalNueva(false)} onCreada={cargar} />}
     </div>
   );
 };

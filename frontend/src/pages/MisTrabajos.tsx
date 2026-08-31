@@ -22,7 +22,10 @@ const parseFotos = (json?: string | null): string[] => {
 const ModalEvidencia: React.FC<{ reserva: Reserva; onClose: () => void; onDone: () => void }> = ({ reserva, onClose, onDone }) => {
   const [registro, setRegistro] = useState(reserva.registro || null);
   const [tipo, setTipo] = useState<'antes' | 'despues'>('antes');
+  const [observaciones, setObservaciones] = useState(reserva.registro?.observaciones || '');
   const [subiendo, setSubiendo] = useState(false);
+  const [guardandoNota, setGuardandoNota] = useState(false);
+  const [notaGuardada, setNotaGuardada] = useState(false);
   const [error, setError] = useState('');
 
   const subir = async (files: FileList | null) => {
@@ -33,6 +36,8 @@ const ModalEvidencia: React.FC<{ reserva: Reserva; onClose: () => void; onDone: 
       const fd = new FormData();
       fd.append('tipo', tipo);
       Array.from(files).forEach((f) => fd.append('fotos', f));
+      // La descripción va junto con las fotos: un solo guardado para el lavador
+      if (observaciones.trim()) fd.append('observaciones', observaciones.trim());
       const r = await api.post(`/reservas/${reserva.id}/evidencia`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
@@ -42,6 +47,28 @@ const ModalEvidencia: React.FC<{ reserva: Reserva; onClose: () => void; onDone: 
       setError(e.message);
     } finally {
       setSubiendo(false);
+    }
+  };
+
+  const guardarNota = async () => {
+    if (!observaciones.trim()) return;
+    setGuardandoNota(true);
+    setError('');
+    setNotaGuardada(false);
+    try {
+      const fd = new FormData();
+      fd.append('observaciones', observaciones.trim());
+      const r = await api.post(`/reservas/${reserva.id}/evidencia`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setRegistro(r.data);
+      setNotaGuardada(true);
+      setTimeout(() => setNotaGuardada(false), 2500);
+      onDone();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setGuardandoNota(false);
     }
   };
 
@@ -81,6 +108,23 @@ const ModalEvidencia: React.FC<{ reserva: Reserva; onClose: () => void; onDone: 
           <input type="file" accept="image/*" multiple hidden disabled={subiendo} onChange={(e) => { subir(e.target.files); e.target.value = ''; }} />
         </label>
         {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+
+        <div className="mt-4">
+          <label className="text-xs font-semibold uppercase text-slate-400 tracking-wide">
+            ¿Qué se hizo?
+          </label>
+          <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} rows={3}
+            placeholder="Estado en que recibió el vehículo, trabajo realizado, novedades…"
+            className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+          <div className="flex items-center gap-2 mt-1">
+            <button onClick={guardarNota} disabled={guardandoNota || !observaciones.trim()}
+              className="text-sm px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+              {guardandoNota ? 'Guardando…' : 'Guardar descripción'}
+            </button>
+            {notaGuardada && <span className="text-xs text-green-600">Guardada</span>}
+            <span className="text-xs text-slate-400 ml-auto">El cliente la ve en el acta</span>
+          </div>
+        </div>
 
         <div className="mt-5 space-y-4">
           <div>
