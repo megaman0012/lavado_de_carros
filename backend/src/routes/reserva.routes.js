@@ -7,7 +7,7 @@ const router = express.Router();
 const reservaController = require('../controllers/reserva.controller');
 const pagoController = require('../controllers/pago.controller');
 const { authenticate, requireRole } = require('../middleware/auth.middleware');
-const { upload } = require('../config/upload');
+const { upload, uploadComprobante } = require('../config/upload');
 
 // Cliente autenticado
 router.get('/mis-reservas', authenticate, reservaController.misReservas);
@@ -50,7 +50,13 @@ router.post('/:id/evidencia', authenticate, requireRole('admin', 'operador', 'la
   subirConUpload, reservaController.subirEvidencia);
 
 // Pagos manuales (efectivo/transferencia) sobre la reserva
-router.post('/:id/pagos', authenticate, requireRole('admin', 'operador'), pagoController.registrar);
+const subirComprobante = (req, res, next) => {
+  uploadComprobante.single('comprobante')(req, res, (err) => {
+    if (err) return res.status(400).json({ success: false, message: err.message });
+    next();
+  });
+};
+router.post('/:id/pagos', authenticate, requireRole('admin', 'operador'), subirComprobante, pagoController.registrar);
 router.delete('/:id/pagos/:pagoId', authenticate, requireRole('admin'), pagoController.anular);
 // Pago con tarjeta (gateway-agnóstico, ver pago.controller.js) — cliente propietario o interno
 router.post('/:id/pagos/tarjeta', authenticate, requireRole('admin', 'operador', 'cliente'), pagoController.iniciarTarjeta);

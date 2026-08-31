@@ -6,6 +6,7 @@
 
 const crypto = require('crypto');
 const prisma = require('../db');
+const { firmar } = require('../utils/firmaArchivos');
 
 const METODOS_MANUALES = ['efectivo', 'transferencia'];
 
@@ -32,6 +33,11 @@ const registrar = async (req, res) => {
       return res.status(400).json({ success: false, message: `No se puede registrar un pago sobre una reserva "${reserva.estado}"` });
     }
 
+    // Comprobante de la transferencia adjuntado por el operador (opcional)
+    const comprobante_url = req.file
+      ? `/uploads/comprobantes/reserva-${reserva.id}/${req.file.filename}`
+      : null;
+
     const pago = await prisma.$transaction(async (tx) => {
       const nuevo = await tx.pago.create({
         data: {
@@ -40,6 +46,7 @@ const registrar = async (req, res) => {
           metodo,
           estado: 'aprobado',
           referencia: referencia?.trim() || null,
+          comprobante_url,
           fecha_pago: fecha_pago ? new Date(fecha_pago) : new Date()
         }
       });
@@ -49,7 +56,7 @@ const registrar = async (req, res) => {
           accion: 'registrar_pago',
           estado_anterior: reserva.estado,
           estado_nuevo: reserva.estado,
-          motivo: `Pago registrado: $${montoNum.toFixed(2)} (${metodo})`,
+          motivo: `Pago registrado: $${montoNum.toFixed(2)} (${metodo})${comprobante_url ? ' con comprobante' : ''}`,
           usuario: req.usuario.username
         }
       });
@@ -61,7 +68,11 @@ const registrar = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      data: { pago, total_pagado: totalPagado, saldo: Math.max((reserva.precio_final || 0) - totalPagado, 0) }
+      data: {
+        pago: { ...pago, comprobante_url: firmar(pago.comprobante_url) },
+        total_pagado: totalPagado,
+        saldo: Math.max((reserva.precio_final || 0) - totalPagado, 0)
+      }
     });
   } catch (error) {
     console.error('Error registrando pago:', error);

@@ -236,6 +236,9 @@ model Pago {
   metodo     String    @default("efectivo") // efectivo | transferencia | tarjeta
   estado     String    @default("pendiente") // pendiente | aprobado | rechazado | reembolsado
   referencia String? // id transacción pasarela
+  // Comprobante de transferencia adjuntado por el operador (imagen o PDF).
+  // Se sirve firmado desde /uploads/comprobantes/, ver utils/firmaArchivos.js
+  comprobante_url String?
   fecha_pago DateTime?
   createdAt  DateTime  @default(now())
 
