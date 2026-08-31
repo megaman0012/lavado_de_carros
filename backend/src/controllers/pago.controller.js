@@ -7,6 +7,7 @@
 const crypto = require('crypto');
 const prisma = require('../db');
 const { firmar } = require('../utils/firmaArchivos');
+const { notificarPagoVerificado } = require('../services/notificacion.service');
 
 const METODOS_MANUALES = ['efectivo', 'transferencia'];
 
@@ -90,6 +91,12 @@ const anular = async (req, res) => {
     }
     if (pago.estado === 'rechazado') {
       return res.status(400).json({ success: false, message: 'Este pago ya está anulado' });
+    }
+    if (pago.estado === 'en_verificacion') {
+      return res.status(400).json({
+        success: false,
+        message: 'Este comprobante está pendiente de verificación: apruébelo o recháncelo desde "Pagos por verificar"'
+      });
     }
 
     const actualizado = await prisma.$transaction(async (tx) => {
@@ -182,4 +189,202 @@ const webhook = async (req, res) => {
   }
 };
 
-module.exports = { registrar, anular, iniciarTarjeta, webhook };
+
+// ==================== COMPROBANTE SUBIDO POR EL CLIENTE ====================
+
+/**
+ * POST /api/reservas/:id/pagos/comprobante  (rol cliente, dueño de la reserva)
+ *
+ * El cliente transfiere y sube su comprobante. El pago queda en
+ * 'en_verificacion': NO cuenta como ingreso ni salda la reserva hasta que un
+ * operador lo apruebe. El cliente nunca puede aprobar su propio pago — eso vive
+ * en verificar(), detrás de requireRole('admin','operador').
+ */
+const subirComprobanteCliente = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const reserva = await prisma.reserva.findUnique({
+      where: { id: parseInt(id) },
+      include: { pagos: true }
+    });
+    if (!reserva) return res.status(404).json({ success: false, message: 'Reserva no encontrada' });
+    if (reserva.id_cliente !== req.usuario.id_cliente) {
+      return res.status(403).json({ success: false, message: 'Acceso denegado' });
+    }
+    if (['cancelada', 'no_asistio'].includes(reserva.estado)) {
+      return res.status(400).json({ success: false, message: `No se puede pagar una reserva "${reserva.estado}"` });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Adjunte la imagen o el PDF del comprobante' });
+    }
+
+    // Un solo comprobante en revisión a la vez: evita que se acumulen envíos
+    // repetidos y que el operador tenga que adivinar cuál corresponde.
+    if (reserva.pagos.some((p) => p.estado === 'en_verificacion')) {
+      return res.status(409).json({
+        success: false,
+        message: 'Ya tiene un comprobante en revisión para esta reserva. Espere la respuesta.'
+      });
+    }
+
+    const pagado = reserva.pagos.filter((p) => p.estado === 'aprobado').reduce((sum, p) => sum + p.monto, 0);
+    const saldo = Math.max((reserva.precio_final || 0) - pagado, 0);
+    if (saldo <= 0) {
+      return res.status(400).json({ success: false, message: 'Esta reserva no tiene saldo pendiente' });
+    }
+
+    const montoNum = parseFloat(req.body.monto);
+    if (!montoNum || montoNum <= 0) {
+      return res.status(400).json({ success: false, message: 'Indique el monto transferido' });
+    }
+    if (montoNum > saldo + 0.001) {
+      return res.status(400).json({
+        success: false,
+        message: `El monto supera el saldo pendiente ($${saldo.toFixed(2)})`
+      });
+    }
+
+    const comprobante_url = `/uploads/comprobantes/reserva-${reserva.id}/${req.file.filename}`;
+
+    const pago = await prisma.$transaction(async (tx) => {
+      const nuevo = await tx.pago.create({
+        data: {
+          id_reserva: reserva.id,
+          monto: montoNum,
+          metodo: 'transferencia',
+          estado: 'en_verificacion',
+          referencia: req.body.referencia?.trim() || null,
+          comprobante_url
+        }
+      });
+      await tx.historialReserva.create({
+        data: {
+          id_reserva: reserva.id,
+          accion: 'comprobante_recibido',
+          motivo: `El cliente envió un comprobante por $${montoNum.toFixed(2)}`,
+          usuario: req.usuario.username
+        }
+      });
+      return nuevo;
+    });
+
+    res.status(201).json({
+      success: true,
+      data: { ...pago, comprobante_url: firmar(pago.comprobante_url) },
+      message: 'Comprobante recibido. Lo validaremos y te avisaremos por correo.'
+    });
+  } catch (error) {
+    console.error('Error recibiendo comprobante del cliente:', error);
+    res.status(500).json({ success: false, message: 'Error al recibir el comprobante' });
+  }
+};
+
+/**
+ * PUT /api/reservas/:id/pagos/:pagoId/verificar  (admin/operador)
+ * Aprueba o rechaza un comprobante enviado por el cliente.
+ */
+const verificar = async (req, res) => {
+  try {
+    const { id, pagoId } = req.params;
+    const { aprobar, motivo } = req.body;
+
+    if (typeof aprobar !== 'boolean') {
+      return res.status(400).json({ success: false, message: 'Indique si aprueba o rechaza (aprobar: true|false)' });
+    }
+
+    const pago = await prisma.pago.findUnique({ where: { id: parseInt(pagoId) } });
+    if (!pago || pago.id_reserva !== parseInt(id)) {
+      return res.status(404).json({ success: false, message: 'Pago no encontrado' });
+    }
+    if (pago.estado !== 'en_verificacion') {
+      return res.status(400).json({ success: false, message: `Este pago ya está "${pago.estado}"` });
+    }
+    if (!aprobar && !motivo?.trim()) {
+      return res.status(400).json({ success: false, message: 'Indique el motivo del rechazo (lo verá el cliente)' });
+    }
+
+    const actualizado = await prisma.$transaction(async (tx) => {
+      const p = await tx.pago.update({
+        where: { id: pago.id },
+        data: {
+          estado: aprobar ? 'aprobado' : 'rechazado',
+          ...(aprobar && { fecha_pago: new Date() })
+        }
+      });
+      await tx.historialReserva.create({
+        data: {
+          id_reserva: pago.id_reserva,
+          accion: aprobar ? 'comprobante_aprobado' : 'comprobante_rechazado',
+          motivo: aprobar
+            ? `Comprobante aprobado: $${pago.monto.toFixed(2)}`
+            : `Comprobante rechazado: ${motivo.trim()}`,
+          usuario: req.usuario.username
+        }
+      });
+      return p;
+    });
+
+    // Aviso al cliente (si no hay SMTP configurado solo queda en el log)
+    const reserva = await prisma.reserva.findUnique({
+      where: { id: pago.id_reserva },
+      include: { cliente: true, tipoServicio: true, estacionamiento: true }
+    });
+    notificarPagoVerificado(reserva, actualizado, aprobar, motivo).catch((e) =>
+      console.error('No se pudo notificar la verificación del pago:', e.message)
+    );
+
+    res.json({
+      success: true,
+      data: { ...actualizado, comprobante_url: firmar(actualizado.comprobante_url) },
+      message: aprobar ? 'Pago aprobado' : 'Comprobante rechazado'
+    });
+  } catch (error) {
+    console.error('Error verificando el comprobante:', error);
+    res.status(500).json({ success: false, message: 'Error al verificar el comprobante' });
+  }
+};
+
+/**
+ * GET /api/pagos/pendientes  (admin/operador)
+ * Bandeja de comprobantes esperando validación.
+ */
+const pendientes = async (req, res) => {
+  try {
+    const pagos = await prisma.pago.findMany({
+      where: { estado: 'en_verificacion' },
+      include: {
+        reserva: {
+          include: {
+            cliente: { select: { id: true, nombre: true, telefono: true, email: true } },
+            vehiculo: { select: { placa: true, marca: true, modelo: true } },
+            tipoServicio: { select: { nombre: true } },
+            pagos: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    const data = pagos.map((p) => {
+      const aprobados = p.reserva.pagos.filter((x) => x.estado === 'aprobado');
+      const pagado = aprobados.reduce((sum, x) => sum + x.monto, 0);
+      return {
+        ...p,
+        comprobante_url: firmar(p.comprobante_url),
+        reserva: {
+          ...p.reserva,
+          pagos: undefined,
+          total_pagado: pagado,
+          saldo: Math.max((p.reserva.precio_final || 0) - pagado, 0)
+        }
+      };
+    });
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error listando comprobantes pendientes:', error);
+    res.status(500).json({ success: false, message: 'Error al listar los comprobantes pendientes' });
+  }
+};
+
+module.exports = { registrar, anular, subirComprobanteCliente, verificar, pendientes, iniciarTarjeta, webhook };

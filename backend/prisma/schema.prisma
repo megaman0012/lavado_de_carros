@@ -234,7 +234,9 @@ model Pago {
   id_reserva Int
   monto      Float
   metodo     String    @default("efectivo") // efectivo | transferencia | tarjeta
-  estado     String    @default("pendiente") // pendiente | aprobado | rechazado | reembolsado
+  // en_verificacion = comprobante subido por el cliente, esperando que un
+  // operador lo apruebe; NO cuenta como ingreso hasta ser aprobado
+  estado     String    @default("pendiente") // pendiente | en_verificacion | aprobado | rechazado | reembolsado
   referencia String? // id transacción pasarela
   // Comprobante de transferencia adjuntado por el operador (imagen o PDF).
   // Se sirve firmado desde /uploads/comprobantes/, ver utils/firmaArchivos.js

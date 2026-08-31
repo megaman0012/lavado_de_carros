@@ -49,4 +49,18 @@ const notificarCompletado = (reserva) => enviarCorreo({
   `)
 });
 
-module.exports = { notificarCreacion, notificarConfirmacion, notificarCompletado };
+// Resultado de la verificación del comprobante que subió el cliente
+const notificarPagoVerificado = (reserva, pago, aprobado, motivo) => enviarCorreo({
+  to: reserva.cliente?.email,
+  subject: `Pago de la reserva ${reserva.codigo} ${aprobado ? 'confirmado' : 'rechazado'}`,
+  html: plantilla(aprobado ? 'Pago confirmado' : 'No pudimos validar tu pago', `
+    <p>Hola ${reserva.cliente?.nombre || ''}, ${aprobado
+      ? `confirmamos tu pago de <strong>$${pago.monto.toFixed(2)}</strong>.`
+      : `revisamos el comprobante de <strong>$${pago.monto.toFixed(2)}</strong> que enviaste y no pudimos validarlo.`}</p>
+    ${detalleReserva(reserva)}
+    ${!aprobado && motivo ? `<p><strong>Motivo:</strong> ${motivo}</p>` : ''}
+    ${!aprobado ? '<p>Puedes volver a subir el comprobante desde "Mis Reservas" o comunicarte con nosotros.</p>' : ''}
+  `)
+});
+
+module.exports = { notificarCreacion, notificarConfirmacion, notificarCompletado, notificarPagoVerificado };

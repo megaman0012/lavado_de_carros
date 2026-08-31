@@ -58,6 +58,11 @@ const subirComprobante = (req, res, next) => {
 };
 router.post('/:id/pagos', authenticate, requireRole('admin', 'operador'), subirComprobante, pagoController.registrar);
 router.delete('/:id/pagos/:pagoId', authenticate, requireRole('admin'), pagoController.anular);
+// El cliente sube su propio comprobante de transferencia: queda "en_verificacion"
+// hasta que un operador lo apruebe (nunca puede aprobarlo él mismo).
+router.post('/:id/pagos/comprobante', authenticate, requireRole('cliente'),
+  subirComprobante, pagoController.subirComprobanteCliente);
+router.put('/:id/pagos/:pagoId/verificar', authenticate, requireRole('admin', 'operador'), pagoController.verificar);
 // Pago con tarjeta (gateway-agnóstico, ver pago.controller.js) — cliente propietario o interno
 router.post('/:id/pagos/tarjeta', authenticate, requireRole('admin', 'operador', 'cliente'), pagoController.iniciarTarjeta);
 
