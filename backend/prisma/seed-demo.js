@@ -78,13 +78,19 @@ const siguienteCodigo = async () => {
 
 async function crearCliente({ nombre, email, telefono, password, vehiculos }) {
   let cliente = await prisma.cliente.findUnique({ where: { email } });
-  if (!cliente) {
+  if (cliente) {
+    cliente = await prisma.cliente.update({ where: { id: cliente.id }, data: { nombre, telefono, estado: 'activo' } });
+  } else {
     cliente = await prisma.cliente.create({ data: { nombre, email, telefono } });
   }
+  // La contraseña se restablece también al actualizar: si no, una demo anterior
+  // (o una prueba que la cambió) dejaba al cliente ficticio sin poder entrar con
+  // la contraseña que este script anuncia.
+  const hash = await bcrypt.hash(password, 10);
   await prisma.usuario.upsert({
     where: { username: email },
-    update: { id_cliente: cliente.id },
-    create: { username: email, password: await bcrypt.hash(password, 10), rol: 'cliente', id_cliente: cliente.id }
+    update: { id_cliente: cliente.id, password: hash, estado: 'activo' },
+    create: { username: email, password: hash, rol: 'cliente', id_cliente: cliente.id }
   });
 
   const vehiculosCreados = [];
@@ -96,7 +102,7 @@ async function crearCliente({ nombre, email, telefono, password, vehiculos }) {
   return { cliente, vehiculos: vehiculosCreados };
 }
 
-async function crearReserva({ cliente, vehiculo, servicio, estacionamiento, dia, hora_inicio, id_lavador, estado }) {
+async function crearReserva({ cliente, vehiculo, servicio, estacionamiento, dia, hora_inicio, id_lavador, estado, comprobantePendiente }) {
   const hora_fin = sumarMin(hora_inicio, servicio.duracion_min);
 
   const reserva = await prisma.reserva.create({
@@ -176,6 +182,29 @@ async function crearReserva({ cliente, vehiculo, servicio, estacionamiento, dia,
     });
     await prisma.calificacion.create({
       data: { id_reserva: reserva.id, id_cliente: cliente.id, puntuacion: 4 + (reserva.id % 2), comentario: 'Buen servicio, puntual.' }
+    });
+  }
+
+  // Comprobante que el cliente envió y todavía espera validación del operador:
+  // deja contenido en la bandeja "Pagos por verificar" para la demostración.
+  if (comprobantePendiente) {
+    await prisma.pago.create({
+      data: {
+        id_reserva: reserva.id,
+        monto: servicio.precio,
+        metodo: 'transferencia',
+        estado: 'en_verificacion',
+        referencia: `TRF-${200000 + reserva.id}`,
+        comprobante_url: guardarComprobante(reserva.id)
+      }
+    });
+    await prisma.historialReserva.create({
+      data: {
+        id_reserva: reserva.id,
+        accion: 'comprobante_recibido',
+        motivo: `El cliente envió un comprobante por $${servicio.precio.toFixed(2)}`,
+        usuario: cliente.email
+      }
     });
   }
 
@@ -273,18 +302,19 @@ async function main() {
   // ==================== HOY (en curso / confirmadas / pendientes) ====================
   await crearReserva({ cliente: valentina, vehiculo: vValentina[0], servicio: servicio('Expreso Interior'), estacionamiento: sitio('Edificio Central Park'), dia: hoy, hora_inicio: '09:00', id_lavador: lavador('Ana Torres').id, estado: 'en_proceso' });
   await crearReserva({ cliente: maria, vehiculo: vMaria[0], servicio: servicio('Expreso Motor y Llantas'), estacionamiento: sitio('Condominio Los Alamos'), dia: hoy, hora_inicio: '11:00', id_lavador: lavador('Carlos Pérez').id, estado: 'confirmada' });
-  await crearReserva({ cliente: jorge, vehiculo: vJorge[0], servicio: servicio('Limpieza Profunda'), estacionamiento: null, dia: hoy, hora_inicio: '15:00', id_lavador: null, estado: 'confirmada' });
+  await crearReserva({ cliente: jorge, vehiculo: vJorge[0], servicio: servicio('Limpieza Profunda'), estacionamiento: null, dia: hoy, hora_inicio: '15:00', id_lavador: null, estado: 'confirmada', comprobantePendiente: true });
   await crearReserva({ cliente: andres, vehiculo: vAndres[1], servicio: servicio('Expreso Completo'), estacionamiento: sitio('Torre Empresarial Norte'), dia: hoy, hora_inicio: '16:00', id_lavador: null, estado: 'solicitada' });
 
   // ==================== MAÑANA (agenda futura) ====================
   await crearReserva({ cliente: sofia, vehiculo: vSofia[0], servicio: servicio('Expreso Exterior'), estacionamiento: sitio('Edificio Central Park'), dia: manana, hora_inicio: '08:00', id_lavador: null, estado: 'solicitada' });
-  await crearReserva({ cliente: valentina, vehiculo: vValentina[0], servicio: servicio('Expreso Premium'), estacionamiento: sitio('Condominio Los Alamos'), dia: manana, hora_inicio: '10:00', id_lavador: lavador('Luis Gómez').id, estado: 'confirmada' });
+  await crearReserva({ cliente: valentina, vehiculo: vValentina[0], servicio: servicio('Expreso Premium'), estacionamiento: sitio('Condominio Los Alamos'), dia: manana, hora_inicio: '10:00', id_lavador: lavador('Luis Gómez').id, estado: 'confirmada', comprobantePendiente: true });
   await crearReserva({ cliente: andres, vehiculo: vAndres[0], servicio: servicio('Limpieza Profunda'), estacionamiento: null, dia: manana, hora_inicio: '13:00', id_lavador: null, estado: 'solicitada' });
   await crearReserva({ cliente: maria, vehiculo: vMaria[0], servicio: servicio('Expreso Interior'), estacionamiento: sitio('Torre Empresarial Norte'), dia: manana, hora_inicio: '15:00', id_lavador: lavador('Carlos Pérez').id, estado: 'confirmada' });
 
   console.log('✅ 12 reservas ficticias creadas (4 ayer, 4 hoy, 4 mañana)');
   console.log('   Las completadas incluyen evidencia fotográfica, descripción del trabajo,');
   console.log('   pago (algunos por transferencia con comprobante) y calificación.');
+  console.log('   2 reservas quedan con un comprobante esperando validación del operador.');
   console.log(`\n🎉 Seed de demo completado. Contraseña de todos los clientes ficticios: ${PASSWORD_DEMO}`);
 }
 
