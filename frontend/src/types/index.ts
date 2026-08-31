@@ -60,7 +60,12 @@ export interface Cliente {
   cedula?: string | null;
   telefono?: string | null;
   email?: string | null;
+  estado?: string;
+  // Cuenta con la que el cliente entra al sitio; null = ficha sin acceso
+  usuario?: { id: number; username: string; rol?: string } | null;
   vehiculos?: Vehiculo[];
+  // Solo en la respuesta de creación / restablecimiento: se muestra una vez
+  password_temporal?: string | null;
 }
 
 export interface Lavador {
@@ -69,6 +74,8 @@ export interface Lavador {
   cedula?: string | null;
   telefono?: string | null;
   estado: string;
+  // Cuenta con la que el lavador entra a "Mis trabajos"; null = no puede ingresar
+  usuario?: { id: number; username: string; estado: string } | null;
 }
 
 export interface FranjaDisponibilidad {
@@ -120,6 +127,8 @@ export interface Pago {
   metodo: 'efectivo' | 'transferencia' | 'tarjeta';
   estado: 'pendiente' | 'aprobado' | 'rechazado' | 'reembolsado';
   referencia?: string | null;
+  // Comprobante de transferencia adjuntado por el operador (URL firmada)
+  comprobante_url?: string | null;
   fecha_pago?: string | null;
   createdAt?: string;
 }
