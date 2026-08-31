@@ -8,6 +8,7 @@ const reservaController = require('../controllers/reserva.controller');
 const pagoController = require('../controllers/pago.controller');
 const { authenticate, requireRole } = require('../middleware/auth.middleware');
 const { upload, uploadComprobante } = require('../config/upload');
+const { limitadorSubidas, limitadorComprobantes } = require('../middleware/rateLimit.middleware');
 
 // Cliente autenticado
 router.get('/mis-reservas', authenticate, reservaController.misReservas);
@@ -47,7 +48,7 @@ const subirConUpload = (req, res, next) => {
   });
 };
 router.post('/:id/evidencia', authenticate, requireRole('admin', 'operador', 'lavador'),
-  subirConUpload, reservaController.subirEvidencia);
+  limitadorSubidas, subirConUpload, reservaController.subirEvidencia);
 
 // Pagos manuales (efectivo/transferencia) sobre la reserva
 const subirComprobante = (req, res, next) => {
@@ -56,12 +57,12 @@ const subirComprobante = (req, res, next) => {
     next();
   });
 };
-router.post('/:id/pagos', authenticate, requireRole('admin', 'operador'), subirComprobante, pagoController.registrar);
+router.post('/:id/pagos', authenticate, requireRole('admin', 'operador'), limitadorSubidas, subirComprobante, pagoController.registrar);
 router.delete('/:id/pagos/:pagoId', authenticate, requireRole('admin'), pagoController.anular);
 // El cliente sube su propio comprobante de transferencia: queda "en_verificacion"
 // hasta que un operador lo apruebe (nunca puede aprobarlo él mismo).
 router.post('/:id/pagos/comprobante', authenticate, requireRole('cliente'),
-  subirComprobante, pagoController.subirComprobanteCliente);
+  limitadorComprobantes, subirComprobante, pagoController.subirComprobanteCliente);
 router.put('/:id/pagos/:pagoId/verificar', authenticate, requireRole('admin', 'operador'), pagoController.verificar);
 // Pago con tarjeta (gateway-agnóstico, ver pago.controller.js) — cliente propietario o interno
 router.post('/:id/pagos/tarjeta', authenticate, requireRole('admin', 'operador', 'cliente'), pagoController.iniciarTarjeta);

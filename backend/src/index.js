@@ -12,11 +12,19 @@ const swaggerUi = require('swagger-ui-express');
 const { swaggerSpec } = require('./swagger');
 const { logger } = require('./utils/logger');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler.middleware');
+const { limitadorGeneral } = require('./middleware/rateLimit.middleware');
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3042;
+
+// Un solo salto de proxy: nginx. Sin esto todas las peticiones llegarían con la
+// IP del contenedor de nginx y el rate limiting trataría a todos los usuarios
+// como uno solo. Se pone 1 (no true) a propósito: 'true' confiaría en cualquier
+// X-Forwarded-For. Aun así, los límites que importan van por id de usuario o por
+// nombre de usuario, que no se pueden falsear (ver rateLimit.middleware.js).
+app.set('trust proxy', 1);
 
 // CORS abierto (el frontend se sirve por nginx con proxy /api)
 app.use(cors({ origin: true, credentials: true }));
@@ -44,6 +52,10 @@ const reporteRoutes = require('./routes/reporte.routes');
 const planRoutes = require('./routes/plan.routes');
 const pagoRoutes = require('./routes/pago.routes');
 const recordatorioRoutes = require('./routes/recordatorio.routes');
+
+// Techo general de la API. Va antes de montar las rutas para cubrirlas a todas;
+// los endpoints sensibles llevan además su propio límite, más estricto.
+app.use('/api', limitadorGeneral);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/public', publicRoutes);

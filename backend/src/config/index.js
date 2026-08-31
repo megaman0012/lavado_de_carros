@@ -16,6 +16,11 @@ module.exports = {
   // Entorno
   NODE_ENV: process.env.NODE_ENV || 'development',
 
+  // Límites de tasa. RATE_LIMIT_OFF=true los desactiva (desarrollo/pruebas);
+  // RATE_LIMIT_GENERAL es el techo por usuario/IP cada 5 minutos.
+  RATE_LIMIT_OFF: process.env.RATE_LIMIT_OFF === 'true',
+  RATE_LIMIT_GENERAL: parseInt(process.env.RATE_LIMIT_GENERAL) || 300,
+
   // Email (notificaciones). Si SMTP_HOST no está definido, los correos solo se registran en el log.
   SMTP_HOST: process.env.SMTP_HOST || '',
   SMTP_PORT: parseInt(process.env.SMTP_PORT) || 587,
