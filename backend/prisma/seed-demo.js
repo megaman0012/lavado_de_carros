@@ -123,8 +123,38 @@ async function crearReserva({ cliente, vehiculo, servicio, estacionamiento, dia,
   return reserva;
 }
 
+/**
+ * Borra las reservas sembradas por una corrida anterior de este script
+ * (se reconocen por el usuario 'seed-demo' en su historial), junto con
+ * todo lo que cuelga de ellas. Las reservas creadas por clientes reales
+ * desde la app NO se tocan. Esto hace el script re-ejecutable: se puede
+ * correr antes de cada demo para que las fechas vuelvan a caer en
+ * ayer / hoy / mañana.
+ */
+async function limpiarDemoAnterior() {
+  const historiales = await prisma.historialReserva.findMany({
+    where: { usuario: 'seed-demo' },
+    select: { id_reserva: true }
+  });
+  const ids = [...new Set(historiales.map((h) => h.id_reserva))];
+  if (ids.length === 0) return;
+
+  const donde = { where: { id_reserva: { in: ids } } };
+  // Sin onDelete: Cascade en el schema, hay que borrar los hijos a mano.
+  await prisma.calificacion.deleteMany(donde);
+  await prisma.registroLavado.deleteMany(donde);
+  await prisma.pago.deleteMany(donde);
+  await prisma.asignacionAgenda.deleteMany(donde);
+  await prisma.historialReserva.deleteMany(donde);
+  await prisma.reserva.deleteMany({ where: { id: { in: ids } } });
+
+  console.log(`🧹 ${ids.length} reservas de una demo anterior eliminadas`);
+}
+
 async function main() {
   console.log('🌱 Sembrando datos ficticios de demo...');
+
+  await limpiarDemoAnterior();
 
   const servicios = await prisma.tipoServicio.findMany();
   const servicio = (nombre) => servicios.find((s) => s.nombre === nombre);
