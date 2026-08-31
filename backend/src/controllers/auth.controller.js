@@ -64,18 +64,28 @@ const login = async (req, res) => {
     const usuario = await prisma.usuario.findUnique({
       where: { username: username.toLowerCase().trim() },
       include: {
-        cliente: { select: { id: true, nombre: true } },
-        lavador: { select: { id: true, nombre: true } }
+        cliente: { select: { id: true, nombre: true, estado: true } },
+        lavador: { select: { id: true, nombre: true, estado: true } }
       }
     });
 
-    if (!usuario || usuario.estado !== 'activo') {
+    if (!usuario) {
       return res.status(401).json({ success: false, message: 'Credenciales inválidas' });
     }
 
     const ok = await bcrypt.compare(password, usuario.password);
     if (!ok) {
       return res.status(401).json({ success: false, message: 'Credenciales inválidas' });
+    }
+
+    // El aviso de suspensión se da recién con la contraseña correcta: así el
+    // cliente entiende por qué no entra, sin revelarle a un extraño qué cuentas
+    // existen. La ficha se suspende desde el panel y el acceso cae con ella.
+    const suspendido = usuario.estado !== 'activo' ||
+      (usuario.cliente && usuario.cliente.estado !== 'activo') ||
+      (usuario.lavador && usuario.lavador.estado !== 'activo');
+    if (suspendido) {
+      return res.status(403).json({ success: false, message: 'Esta cuenta está suspendida. Comuníquese con nosotros.' });
     }
 
     const token = jwt.sign(
@@ -98,8 +108,8 @@ const login = async (req, res) => {
           id: usuario.id,
           username: usuario.username,
           rol: usuario.rol,
-          cliente: usuario.cliente,
-          lavador: usuario.lavador
+          cliente: usuario.cliente && { id: usuario.cliente.id, nombre: usuario.cliente.nombre },
+          lavador: usuario.lavador && { id: usuario.lavador.id, nombre: usuario.lavador.nombre }
         }
       }
     });

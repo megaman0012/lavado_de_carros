@@ -5,6 +5,7 @@
  */
 
 const prisma = require('../db');
+const { firmarReserva, firmarReservas, firmarListaJSON } = require('../utils/firmaArchivos');
 const agendaService = require('../services/agenda.service');
 const notificacionService = require('../services/notificacion.service');
 
@@ -52,6 +53,14 @@ const crear = async (req, res) => {
     }
 
     // Validaciones fuera de transacción
+    const cliente = await prisma.cliente.findUnique({ where: { id: id_cliente } });
+    if (!cliente) {
+      return res.status(400).json({ success: false, message: 'Cliente inexistente' });
+    }
+    if (cliente.estado !== 'activo') {
+      return res.status(403).json({ success: false, message: 'El cliente está suspendido y no puede reservar' });
+    }
+
     const servicio = await prisma.tipoServicio.findUnique({ where: { id: parseInt(id_tipo_servicio) } });
     if (!servicio || !servicio.activo) {
       return res.status(400).json({ success: false, message: 'Servicio no disponible' });
@@ -200,7 +209,7 @@ const listar = async (req, res) => {
       include: incluir,
       orderBy: [{ fecha: 'desc' }, { hora_inicio: 'asc' }]
     });
-    res.json({ success: true, data: reservas });
+    res.json({ success: true, data: firmarReservas(reservas) });
   } catch (error) {
     console.error('Error listando reservas:', error);
     res.status(500).json({ success: false, message: 'Error al listar reservas' });
@@ -215,7 +224,7 @@ const misReservas = async (req, res) => {
       include: incluir,
       orderBy: [{ fecha: 'desc' }, { hora_inicio: 'asc' }]
     });
-    res.json({ success: true, data: reservas });
+    res.json({ success: true, data: firmarReservas(reservas) });
   } catch (error) {
     console.error('Error listando mis reservas:', error);
     res.status(500).json({ success: false, message: 'Error al obtener sus reservas' });
@@ -239,7 +248,7 @@ const misTrabajos = async (req, res) => {
       include: incluir,
       orderBy: [{ fecha: 'desc' }, { hora_inicio: 'asc' }]
     });
-    res.json({ success: true, data: reservas });
+    res.json({ success: true, data: firmarReservas(reservas) });
   } catch (error) {
     console.error('Error listando mis trabajos:', error);
     res.status(500).json({ success: false, message: 'Error al obtener sus trabajos' });
@@ -262,7 +271,7 @@ const obtenerPorId = async (req, res) => {
     if (req.usuario.rol === 'lavador' && !reserva.asignaciones.some((a) => a.id_lavador === req.usuario.id_lavador)) {
       return res.status(403).json({ success: false, message: 'Acceso denegado' });
     }
-    res.json({ success: true, data: reserva });
+    res.json({ success: true, data: firmarReserva(reserva) });
   } catch (error) {
     console.error('Error obteniendo reserva:', error);
     res.status(500).json({ success: false, message: 'Error al obtener la reserva' });
@@ -420,8 +429,9 @@ const subirEvidencia = async (req, res) => {
     const tipo = req.body.tipo === 'despues' ? 'despues' : 'antes';
     const archivos = req.files || [];
 
-    if (archivos.length === 0) {
-      return res.status(400).json({ success: false, message: 'No se recibieron imágenes' });
+    // Se admite guardar solo la descripción, sin fotos nuevas
+    if (archivos.length === 0 && !req.body.observaciones?.trim()) {
+      return res.status(400).json({ success: false, message: 'Suba al menos una foto o escriba una observación' });
     }
 
     const reserva = await prisma.reserva.findUnique({ where: { id: parseInt(id) } });
@@ -441,16 +451,28 @@ const subirEvidencia = async (req, res) => {
     const existente = await prisma.registroLavado.findUnique({ where: { id_reserva: reserva.id } });
     const previas = existente?.[campo] ? JSON.parse(existente[campo]) : [];
 
+    // Descripción del trabajo hecho: la escribe el lavador junto con las fotos y
+    // es lo que sale en el acta de servicio en PDF.
+    const observaciones = req.body.observaciones?.trim();
+
     const data = {
-      [campo]: JSON.stringify([...previas, ...rutasNuevas]),
-      ...(tipo === 'despues' && !existente?.fecha_fin && { fecha_fin: new Date() })
+      ...(rutasNuevas.length > 0 && { [campo]: JSON.stringify([...previas, ...rutasNuevas]) }),
+      ...(observaciones && { observaciones }),
+      ...(tipo === 'despues' && rutasNuevas.length > 0 && !existente?.fecha_fin && { fecha_fin: new Date() })
     };
 
     const registro = existente
       ? await prisma.registroLavado.update({ where: { id_reserva: reserva.id }, data })
       : await prisma.registroLavado.create({ data: { id_reserva: reserva.id, ...data } });
 
-    res.json({ success: true, data: registro });
+    res.json({
+      success: true,
+      data: {
+        ...registro,
+        fotos_antes: firmarListaJSON(registro.fotos_antes),
+        fotos_despues: firmarListaJSON(registro.fotos_despues)
+      }
+    });
   } catch (error) {
     console.error('Error subiendo evidencia:', error);
     res.status(500).json({ success: false, message: 'Error al guardar la evidencia' });

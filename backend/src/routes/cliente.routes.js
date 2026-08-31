@@ -13,6 +13,8 @@ router.get('/', clienteController.listar);
 router.get('/:id', clienteController.obtener);
 router.post('/', clienteController.crear);
 router.put('/:id', clienteController.actualizar);
+// Crea el acceso al sitio o restablece la contraseña; devuelve una temporal una sola vez
+router.post('/:id/acceso', requireRole('admin'), clienteController.generarAcceso);
 router.delete('/:id', clienteController.eliminar);
 
 module.exports = router;

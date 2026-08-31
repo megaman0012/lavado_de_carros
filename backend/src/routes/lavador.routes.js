@@ -12,6 +12,10 @@ router.use(authenticate, requireRole('admin', 'operador'));
 router.get('/', lavadorController.listar);
 router.post('/', lavadorController.crear);
 router.put('/:id', lavadorController.actualizar);
+router.delete('/:id', requireRole('admin'), lavadorController.eliminar);
+// Cuenta con la que el lavador entra al sistema (pantalla "Mis trabajos")
+router.put('/:id/usuario', requireRole('admin'), lavadorController.guardarUsuario);
+router.post('/:id/usuario/reset', requireRole('admin'), lavadorController.resetPassword);
 router.put('/asignaciones/:asignacionId/lavador', lavadorController.asignarLavador);
 
 module.exports = router;
