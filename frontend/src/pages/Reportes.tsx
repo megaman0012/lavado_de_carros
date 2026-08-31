@@ -2,20 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { BarChart3, Car, DollarSign, Percent, AlertCircle, FileSpreadsheet, FileText, Star } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import api from '../services/api';
+import { descargarArchivo } from '../services/descargas';
 import { KPIs } from '../types';
 
-const descargar = async (formato: 'excel' | 'pdf') => {
-  const ext = formato === 'excel' ? 'xlsx' : 'pdf';
-  const r = await api.get(`/reportes/exportar/${formato}`, { responseType: 'blob' });
-  const url = window.URL.createObjectURL(r.data as unknown as Blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `reporte-lavado-carros-${new Date().toISOString().slice(0, 10)}.${ext}`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  window.URL.revokeObjectURL(url);
-};
+const descargar = (formato: 'excel' | 'pdf') => descargarArchivo(
+  `/reportes/exportar/${formato}`,
+  `reporte-lavado-carros-${new Date().toISOString().slice(0, 10)}.${formato === 'excel' ? 'xlsx' : 'pdf'}`
+);
 
 const Reportes: React.FC<{ resumen?: boolean }> = ({ resumen }) => {
   const [kpis, setKpis] = useState<KPIs | null>(null);

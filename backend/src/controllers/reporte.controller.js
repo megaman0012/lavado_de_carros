@@ -6,7 +6,10 @@
 
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
+const path = require('path');
+const fs = require('fs');
 const prisma = require('../db');
+const { UPLOAD_ROOT } = require('../config/upload');
 
 const inicioDia = (f) => { const d = new Date(f); d.setHours(0, 0, 0, 0); return d; };
 
@@ -154,23 +157,70 @@ const ingresos = async (req, res) => {
   }
 };
 
+// Detalle lavado por lavado: es lo que hace auditable el reporte (los agregados
+// dicen cuánto, no cuál). Alimenta la hoja "Detalle de lavados" del Excel.
+const calcularDetalle = async (desde, hasta) => {
+  const reservas = await prisma.reserva.findMany({
+    where: { fecha: { gte: desde, lte: hasta } },
+    include: {
+      cliente: { select: { nombre: true, telefono: true } },
+      vehiculo: { select: { placa: true, marca: true, modelo: true } },
+      tipoServicio: { select: { nombre: true, modalidad: true } },
+      estacionamiento: { select: { nombre: true } },
+      asignaciones: { include: { lavador: { select: { nombre: true } } } },
+      registro: true,
+      pagos: true,
+      calificacion: true
+    },
+    orderBy: [{ fecha: 'asc' }, { hora_inicio: 'asc' }]
+  });
+
+  return reservas.map((r) => {
+    const contar = (json) => {
+      if (!json) return 0;
+      try { return JSON.parse(json).length; } catch (e) { return 0; }
+    };
+    const pagado = r.pagos.filter((p) => p.estado === 'aprobado').reduce((sum, p) => sum + p.monto, 0);
+    return {
+      codigo: r.codigo,
+      fecha: r.fecha.toISOString().slice(0, 10),
+      hora: `${r.hora_inicio} - ${r.hora_fin}`,
+      estado: r.estado,
+      cliente: r.cliente?.nombre || '',
+      telefono: r.cliente?.telefono || '',
+      vehiculo: [r.vehiculo?.placa, r.vehiculo?.marca, r.vehiculo?.modelo].filter(Boolean).join(' '),
+      servicio: r.tipoServicio?.nombre || '',
+      modalidad: r.tipoServicio?.modalidad || '',
+      sitio: r.estacionamiento?.nombre || 'Bahía de lavado',
+      lavador: r.asignaciones.map((a) => a.lavador?.nombre).filter(Boolean).join(', ') || 'Sin asignar',
+      precio: r.precio_final ?? 0,
+      pagado,
+      saldo: Math.max((r.precio_final ?? 0) - pagado, 0),
+      observaciones: r.registro?.observaciones || '',
+      fotos: contar(r.registro?.fotos_antes) + contar(r.registro?.fotos_despues),
+      calificacion: r.calificacion?.puntuacion ?? ''
+    };
+  });
+};
+
 // ==================== EXPORTACIÓN ====================
 
 const datosExportacion = async (req) => {
   const { desde, hasta } = rangoQuery(req);
-  const [kpisData, porServicioData, porEstacionamientoData, ingresosData] = await Promise.all([
+  const [kpisData, porServicioData, porEstacionamientoData, ingresosData, detalleData] = await Promise.all([
     calcularKPIs(),
     calcularPorServicio(desde, hasta),
     calcularPorEstacionamiento(desde, hasta),
-    calcularIngresos(desde, hasta)
+    calcularIngresos(desde, hasta),
+    calcularDetalle(desde, hasta)
   ]);
-  return { desde, hasta, kpisData, porServicioData, porEstacionamientoData, ingresosData };
+  return { desde, hasta, kpisData, porServicioData, porEstacionamientoData, ingresosData, detalleData };
 };
 
 // GET /api/reportes/exportar/excel?desde=&hasta=
 const exportarExcel = async (req, res) => {
   try {
-    const { kpisData, porServicioData, porEstacionamientoData, ingresosData } = await datosExportacion(req);
+    const { kpisData, porServicioData, porEstacionamientoData, ingresosData, detalleData } = await datosExportacion(req);
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Sistema de Lavado de Carros';
@@ -217,6 +267,33 @@ const exportarExcel = async (req, res) => {
     ];
     hojaIngresos.getRow(1).eachCell((c) => Object.assign(c, estiloHeader));
     hojaIngresos.addRows(ingresosData);
+
+    // Una fila por lavado. Las fotos no se embeben a propósito: un mes de
+    // evidencia haría un archivo de decenas de MB. Van en el acta PDF por reserva.
+    const hojaDetalle = workbook.addWorksheet('Detalle de lavados');
+    hojaDetalle.columns = [
+      { header: 'Código', key: 'codigo', width: 16 },
+      { header: 'Fecha', key: 'fecha', width: 12 },
+      { header: 'Horario', key: 'hora', width: 15 },
+      { header: 'Estado', key: 'estado', width: 13 },
+      { header: 'Cliente', key: 'cliente', width: 24 },
+      { header: 'Teléfono', key: 'telefono', width: 16 },
+      { header: 'Vehículo', key: 'vehiculo', width: 26 },
+      { header: 'Servicio', key: 'servicio', width: 24 },
+      { header: 'Modalidad', key: 'modalidad', width: 12 },
+      { header: 'Sitio', key: 'sitio', width: 24 },
+      { header: 'Lavador', key: 'lavador', width: 20 },
+      { header: 'Precio ($)', key: 'precio', width: 12 },
+      { header: 'Pagado ($)', key: 'pagado', width: 12 },
+      { header: 'Saldo ($)', key: 'saldo', width: 12 },
+      { header: 'Observaciones', key: 'observaciones', width: 45 },
+      { header: 'Fotos', key: 'fotos', width: 8 },
+      { header: 'Calificación', key: 'calificacion', width: 12 }
+    ];
+    hojaDetalle.getRow(1).eachCell((c) => Object.assign(c, estiloHeader));
+    hojaDetalle.addRows(detalleData);
+    hojaDetalle.views = [{ state: 'frozen', ySplit: 1 }];
+    hojaDetalle.autoFilter = { from: 'A1', to: { row: 1, column: hojaDetalle.columns.length } };
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="reporte-lavado-carros-${new Date().toISOString().slice(0, 10)}.xlsx"`);
@@ -283,4 +360,244 @@ const exportarPDF = async (req, res) => {
   }
 };
 
-module.exports = { kpis, porServicio, porEstacionamiento, ingresos, exportarExcel, exportarPDF };
+
+// ==================== ACTA DE SERVICIO (PDF por reserva) ====================
+
+/**
+ * Resuelve la ruta en disco de un archivo subido a partir de la ruta pública
+ * guardada en BD ("/uploads/evidencias/reserva-3/antes-1.jpg"), verificando que
+ * no se escape de la carpeta de uploads.
+ */
+const rutaEnDisco = (rutaPublica) => {
+  if (!rutaPublica || !rutaPublica.startsWith('/uploads/')) return null;
+  const relativa = rutaPublica.replace('/uploads/', '');
+  const absoluta = path.normalize(path.join(UPLOAD_ROOT, relativa));
+  if (!absoluta.startsWith(path.normalize(UPLOAD_ROOT))) return null;
+  return fs.existsSync(absoluta) ? absoluta : null;
+};
+
+// pdfkit solo embebe JPEG y PNG; el uploader además acepta webp/gif
+const EMBEBIBLE = /\.(jpe?g|png)$/i;
+
+const rutasDeFotos = (json) => {
+  if (!json) return [];
+  try {
+    const lista = JSON.parse(json);
+    return Array.isArray(lista) ? lista : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+/**
+ * Las fuentes base de pdfkit (Helvetica) no traen glifos como ★ o ✓: se imprimen
+ * como basura. Las estrellas se dibujan entonces como polígonos.
+ */
+const dibujarEstrellas = (doc, x, y, puntuacion, tamano = 12) => {
+  for (let i = 0; i < 5; i += 1) {
+    const cx = x + i * (tamano + 4) + tamano / 2;
+    const cy = y + tamano / 2;
+    const puntos = [];
+    for (let v = 0; v < 10; v += 1) {
+      const radio = v % 2 === 0 ? tamano / 2 : tamano / 4.5;
+      const angulo = -Math.PI / 2 + (v * Math.PI) / 5;
+      puntos.push([cx + radio * Math.cos(angulo), cy + radio * Math.sin(angulo)]);
+    }
+    doc.moveTo(puntos[0][0], puntos[0][1]);
+    puntos.slice(1).forEach(([px, py]) => doc.lineTo(px, py));
+    doc.closePath();
+    if (i < puntuacion) {
+      doc.fillColor('#f59e0b').fill();
+    } else {
+      doc.strokeColor('#cbd5e1').lineWidth(0.8).stroke();
+    }
+  }
+};
+
+/**
+ * GET /api/reportes/reserva/:id/acta.pdf
+ * Comprobante del trabajo hecho: datos de la reserva, checklist, descripción del
+ * lavador, fotos antes/después, pagos y calificación. Es lo que el cliente se
+ * lleva y lo que respalda un reclamo.
+ */
+const actaServicio = async (req, res) => {
+  try {
+    const reserva = await prisma.reserva.findUnique({
+      where: { id: parseInt(req.params.id) },
+      include: {
+        cliente: true,
+        vehiculo: true,
+        tipoServicio: true,
+        estacionamiento: true,
+        asignaciones: { include: { lavador: { select: { nombre: true } } } },
+        registro: true,
+        pagos: true,
+        calificacion: true
+      }
+    });
+    if (!reserva) return res.status(404).json({ success: false, message: 'Reserva no encontrada' });
+
+    // El cliente solo su acta; el lavador solo las que trabajó
+    if (req.usuario.rol === 'cliente' && reserva.id_cliente !== req.usuario.id_cliente) {
+      return res.status(403).json({ success: false, message: 'Acceso denegado' });
+    }
+    if (req.usuario.rol === 'lavador' && !reserva.asignaciones.some((a) => a.id_lavador === req.usuario.id_lavador)) {
+      return res.status(403).json({ success: false, message: 'Acceso denegado' });
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="acta-${reserva.codigo}.pdf"`);
+
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    doc.pipe(res);
+
+    const ANCHO = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const X = doc.page.margins.left;
+
+    // espacioMin evita que un título quede al final de la página y su contenido
+    // arranque en la siguiente (así el saldo no se separaba del resto de pagos)
+    const titulo = (texto, espacioMin = 90) => {
+      if (doc.y + espacioMin > doc.page.height - doc.page.margins.bottom) doc.addPage();
+      doc.moveDown(1);
+      doc.fontSize(13).fillColor('#0284c7').text(texto);
+      doc.moveTo(X, doc.y + 2).lineTo(X + ANCHO, doc.y + 2).strokeColor('#e2e8f0').stroke();
+      doc.moveDown(0.6);
+    };
+    const campo = (etiqueta, valor) => {
+      doc.fontSize(10).fillColor('#64748b').text(`${etiqueta}: `, { continued: true });
+      doc.fillColor('#1e293b').text(String(valor ?? '—'));
+    };
+
+    // Encabezado
+    doc.fontSize(20).fillColor('#0284c7').text('Acta de servicio');
+    doc.fontSize(10).fillColor('#64748b')
+      .text(`${reserva.codigo}  ·  emitida el ${new Date().toLocaleString('es-EC')}`);
+
+    titulo('Datos del servicio');
+    campo('Cliente', reserva.cliente?.nombre);
+    campo('Teléfono', reserva.cliente?.telefono);
+    campo('Vehículo', [reserva.vehiculo?.placa, reserva.vehiculo?.marca, reserva.vehiculo?.modelo, reserva.vehiculo?.color].filter(Boolean).join(' · '));
+    campo('Servicio', `${reserva.tipoServicio?.nombre} (${reserva.tipoServicio?.modalidad})`);
+    campo('Lugar', reserva.estacionamiento?.nombre || 'Bahía de lavado profundo');
+    campo('Fecha', `${reserva.fecha.toISOString().slice(0, 10)}  ${reserva.hora_inicio} - ${reserva.hora_fin}`);
+    campo('Lavador', reserva.asignaciones.map((a) => a.lavador?.nombre).filter(Boolean).join(', ') || 'Sin asignar');
+    campo('Estado', reserva.estado);
+
+    // Checklist
+    const checklist = reserva.registro?.checklist;
+    if (checklist && typeof checklist === 'object' && Object.keys(checklist).length > 0) {
+      titulo('Trabajo realizado');
+      Object.entries(checklist).forEach(([clave, hecho]) => {
+        doc.fontSize(10).fillColor(hecho ? '#16a34a' : '#94a3b8')
+          .text(`${hecho ? '[X]' : '[  ]'}  ${clave.replace(/_/g, ' ')}`);
+      });
+    }
+
+    // Descripción del lavador
+    if (reserva.registro?.observaciones) {
+      titulo('Observaciones');
+      doc.fontSize(10).fillColor('#334155').text(reserva.registro.observaciones, { width: ANCHO, align: 'justify' });
+    }
+
+    // Evidencia fotográfica
+    const grupos = [
+      { etiqueta: 'Antes', rutas: rutasDeFotos(reserva.registro?.fotos_antes) },
+      { etiqueta: 'Después', rutas: rutasDeFotos(reserva.registro?.fotos_despues) }
+    ].filter((g) => g.rutas.length > 0);
+
+    if (grupos.length > 0) {
+      titulo('Evidencia fotográfica');
+      const ANCHO_FOTO = (ANCHO - 15) / 2;
+      const ALTO_FOTO = 130;
+
+      grupos.forEach((grupo) => {
+        doc.fontSize(10).fillColor('#475569').text(grupo.etiqueta);
+        doc.moveDown(0.3);
+
+        let columna = 0;
+        let yFila = doc.y;
+        let omitidas = 0;
+
+        grupo.rutas.forEach((rutaPublica) => {
+          const enDisco = rutaEnDisco(rutaPublica);
+          if (!enDisco || !EMBEBIBLE.test(enDisco)) {
+            omitidas += 1;
+            return;
+          }
+          if (columna === 0 && yFila + ALTO_FOTO > doc.page.height - doc.page.margins.bottom) {
+            doc.addPage();
+            yFila = doc.y;
+          }
+          try {
+            doc.image(enDisco, X + columna * (ANCHO_FOTO + 15), yFila, {
+              fit: [ANCHO_FOTO, ALTO_FOTO], align: 'center', valign: 'center'
+            });
+          } catch (e) {
+            omitidas += 1;
+            return;
+          }
+          columna += 1;
+          if (columna === 2) {
+            columna = 0;
+            yFila += ALTO_FOTO + 10;
+            doc.y = yFila;
+          }
+        });
+
+        if (columna === 1) {
+          doc.y = yFila + ALTO_FOTO + 10;
+        }
+        if (omitidas > 0) {
+          doc.fontSize(8).fillColor('#94a3b8')
+            .text(`(${omitidas} archivo(s) no se pudieron incluir en el PDF)`);
+        }
+        doc.moveDown(0.5);
+      });
+    }
+
+    // Pagos
+    titulo('Pagos', 160); // reserva alto suficiente para no partir la sección
+    const aprobados = reserva.pagos.filter((p) => p.estado === 'aprobado');
+    const pagado = aprobados.reduce((sum, p) => sum + p.monto, 0);
+    campo('Valor del servicio', `$${(reserva.precio_final ?? 0).toFixed(2)}`);
+    if (aprobados.length === 0) {
+      doc.fontSize(10).fillColor('#94a3b8').text('Sin pagos registrados.');
+    } else {
+      aprobados.forEach((p) => {
+        const fecha = p.fecha_pago ? new Date(p.fecha_pago).toLocaleDateString('es-EC') : '';
+        const extras = [p.referencia, p.comprobante_url ? 'comprobante adjunto' : null].filter(Boolean).join(' · ');
+        doc.fontSize(10).fillColor('#334155')
+          .text(`$${p.monto.toFixed(2)} — ${p.metodo} — ${fecha}${extras ? ` (${extras})` : ''}`);
+      });
+    }
+    campo('Total pagado', `$${pagado.toFixed(2)}`);
+    campo('Saldo', `$${Math.max((reserva.precio_final ?? 0) - pagado, 0).toFixed(2)}`);
+
+    // Calificación
+    if (reserva.calificacion) {
+      titulo('Calificación del cliente');
+      dibujarEstrellas(doc, X, doc.y, reserva.calificacion.puntuacion);
+      doc.fontSize(10).fillColor('#64748b')
+        .text(`${reserva.calificacion.puntuacion} de 5`, X + 90, doc.y + 2);
+      doc.moveDown(1);
+      if (reserva.calificacion.comentario) {
+        doc.fontSize(10).fillColor('#334155').text(`"${reserva.calificacion.comentario}"`, X, doc.y);
+      }
+    }
+
+    doc.moveDown(2);
+    doc.fontSize(8).fillColor('#94a3b8')
+      .text('Documento generado automáticamente por el Sistema de Lavado de Carros.', { align: 'center' });
+
+    doc.end();
+  } catch (error) {
+    console.error('Error generando el acta de servicio:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Error al generar el acta' });
+    } else {
+      res.end();
+    }
+  }
+};
+
+module.exports = { kpis, porServicio, porEstacionamiento, ingresos, exportarExcel, exportarPDF, actaServicio };
