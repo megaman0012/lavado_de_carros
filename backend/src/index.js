@@ -6,6 +6,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const { verificarFirma } = require('./utils/firmaArchivos');
 const dotenv = require('dotenv');
 const swaggerUi = require('swagger-ui-express');
 const { swaggerSpec } = require('./swagger');
@@ -63,7 +64,9 @@ app.use('/api/pagos', pagoRoutes);
 app.use('/api/recordatorios', recordatorioRoutes);
 
 // Evidencias fotográficas (estático)
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Los archivos subidos (evidencia fotográfica, comprobantes de transferencia) se
+// sirven solo con una URL firmada y vigente; la API las entrega ya firmadas.
+app.use('/uploads', verificarFirma, express.static(path.join(__dirname, '../uploads')));
 
 // Swagger
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
