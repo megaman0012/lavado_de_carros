@@ -78,3 +78,33 @@ Resto:           según demanda real
 
 **Regla práctica:** nada de P2 antes de tener 2-3 semanas de operación real con P0+P1.
 > Actualización 2026-08-22: el usuario pidió avanzar con todo P2 de una vez; ver `HISTORIAL_CHAT.md` (Sesión 4) para el detalle de qué quedó activo y qué quedó en modo "código listo, sin credenciales reales".
+
+---
+
+## Sprint E — Administración, evidencia y walk-in (2026-08-31) ✅ COMPLETO
+
+Surge del análisis del usuario sobre huecos encontrados usando el panel. Todos los ítems quedaron implementados y probados en esta sesión.
+
+| # | Ítem | Esfuerzo | Estado |
+|---|------|----------|--------|
+| E1 | Editar servicios (incl. orden en catálogo) desde el panel | S | ✅ |
+| E2 | Editar ficha de lavadores | S | ✅ |
+| E3 | **Suspensión efectiva** de clientes y lavadores (era decorativa) | S | ✅ |
+| E4 | Clientes: editar, suspender/reactivar, crear acceso / restablecer contraseña | S-M | ✅ |
+| E5 | **Cuenta de acceso del lavador** desde su ficha (no existía por ninguna vía) | M | ✅ |
+| E6 | `/uploads` detrás de URL firmada | S | ✅ |
+| E7 | Descripción del trabajo en la evidencia (`observaciones` nunca se llenaba) | S | ✅ |
+| E8 | **Acta de servicio en PDF** por reserva, con fotos embebidas | M | ✅ |
+| E9 | Comprobante de transferencia adjunto al pago (variante: lo sube el operador) | S | ✅ |
+| E10 | Hoja "Detalle de lavados" en el Excel | S | ✅ |
+| E11 | **Walk-in completo**: alta de reserva desde el panel a nombre de un cliente | M | ✅ |
+
+### Decisiones tomadas con el usuario
+- **Comprobante de transferencia**: lo sube el **operador** (variante a). Que lo suba el cliente y quede pendiente de validación reusa el mismo campo y storage; queda para cuando se decida.
+- **Servicios y clientes no se borran**: se desactivan/suspenden. Sus reservas históricas los referencian y borrarlos rompería el histórico y los reportes.
+- **Sin pantalla de "usuarios"**: para 3-5 personas, las credenciales del lavador se gestionan dentro de su ficha.
+
+### Lo que sigue abierto (P3, sin cambios)
+- #14 Tests backend · #15 Seguridad dura (rate limiting, helmet, refresh token) · #16 CI/CD · #17 Backups de Postgres.
+- El punto #17 se vuelve más importante: el volumen `uploads_data` ahora guarda también comprobantes de pago, no solo fotos.
+- Pendiente de decisión: que el **cliente** suba su comprobante (variante b del ítem E9).
