@@ -388,3 +388,67 @@ docker exec -w /app lavado_de_carros-backend-1 node prisma/seed-demo.js
 
 ### Notas
 - Sigue vigente el detalle de timezone de la Sesión 4: el contenedor backend corre en UTC y el negocio en UTC-5, así que el seed calcula "hoy" en UTC. Corriéndolo en horario laboral no hay diferencia; cerca de la medianoche local sí podría desfasar un día.
+
+---
+
+## Sesión 6 — 2026-08-31
+
+**Pedido del usuario:** análisis de 5 huecos encontrados usando el panel, y luego implementarlos. Sobre el análisis eligió la **variante (a)** del comprobante (lo sube el operador) y pidió el **walk-in completo**.
+
+### Hallazgos del análisis (antes de tocar código)
+Tres de los cinco puntos ya estaban resueltos en el backend y solo les faltaba UI. Además aparecieron dos defectos que el usuario no había pedido revisar:
+
+1. **La suspensión no suspendía.** `cliente.controller.eliminar` marcaba `Cliente.estado='inactivo'`, pero el login validaba `Usuario.estado` — otro campo. Un cliente "suspendido" seguía entrando y reservando. Y `auth.middleware` no revisaba estado, así que un token ya emitido servía 24h más.
+2. **`/uploads` estaba abierto** (`express.static` sin validación): cualquiera con la URL veía la evidencia fotográfica. Con comprobantes bancarios encima, peor.
+
+Otros dos huecos de fondo:
+- **Ningún lavador creado desde el panel podía entrar al sistema.** No existía forma de crearle un `Usuario`, ni por API ni por UI; los únicos usuarios lavador eran los de `seed.js`.
+- **`RegistroLavado.observaciones` nunca se llenaba**, así que "la descripción" que el usuario quería en el reporte no se capturaba en ninguna parte.
+
+### Implementado
+| Punto del usuario | Qué se hizo |
+|---|---|
+| 1 · Formulario de clientes en el admin | El alta pasa a **"Cliente atendido en sitio"** (walk-in / telefónico) y opcionalmente crea el acceso con contraseña provisional; antes producía una ficha sin login, inservible. Se agregó editar, suspender/reactivar, y crear acceso / restablecer contraseña. |
+| 2 · Servicios sin editar ni eliminar | Formulario de edición completo, incluido `orden_display` (todo lo creado desde el panel quedaba en 99). No se agregó borrado real: se desactiva, con la explicación en pantalla. |
+| 3 · Lavadores sin editar; usuario sin dónde | Edición de ficha + **gestión de la cuenta de acceso dentro de la ficha** (`PUT /lavadores/:id/usuario`, `POST /lavadores/:id/usuario/reset`), con la contraseña temporal mostrada una sola vez. Al suspender se avisa que baja la capacidad de la agenda. |
+| 4 · Reportes con foto y descripción | Se captura la descripción en el modal de evidencia (con o sin fotos), y se agregó el **acta de servicio en PDF** por reserva (`GET /reportes/reserva/:id/acta.pdf`) con datos, checklist, descripción, fotos antes/después embebidas, pagos y calificación. Más la hoja **"Detalle de lavados"** en el Excel. |
+| 5 · Comprobante de transferencia | `Pago.comprobante_url` + multer a `uploads/comprobantes/`, aceptando imagen o PDF. Lo adjunta el operador en el modal de pagos. |
+| Walk-in completo | `ModalNuevaReserva`: buscar cliente → elegir o registrar su vehículo → servicio, sitio, fecha y franja disponible. El backend ya aceptaba `id_cliente` para admin/operador; faltaba la pantalla. |
+
+**Archivos nuevos:** `backend/src/utils/credenciales.js`, `backend/src/utils/firmaArchivos.js`, `backend/prisma/demo-imagenes.js`, `frontend/src/components/ModalNuevaReserva.tsx`, `frontend/src/services/descargas.ts`.
+
+### Detalles técnicos que costaron
+- **URLs firmadas en vez de header Authorization**: las fotos se consumen desde `<img src="...">` y ahí el navegador no manda el header. La API entrega las rutas con `?exp=&sig=` (HMAC sobre ruta+vencimiento con `JWT_SECRET`, 8h, comparado con `timingSafeEqual`) y el handler de `/uploads` valida. nginx ya proxeaba `/uploads/` al backend y pasa el query string, así que no hubo que tocarlo.
+- **pdfkit no tiene glifos `★` ni `✓`** en sus fuentes base: salían como `&&&&&` y `'`. Las estrellas se dibujan como polígonos y el checklist usa `[X]` / `[  ]`.
+- **pdfkit solo embebe JPEG y PNG**, pero el uploader acepta webp/gif: el acta cuenta los archivos que no pudo incluir en vez de romperse.
+- **Sin `onDelete: Cascade`** en el schema, cualquier borrado de reservas exige eliminar los hijos a mano y en orden.
+
+### Verificación (backend por API, extremo a extremo por nginx en :3041)
+| Prueba | Resultado |
+|---|---|
+| Editar servicio / desactivar / reactivar | ✅ |
+| Editar lavador; crear su cuenta; login del lavador; ver "Mis trabajos" | ✅ |
+| Username de lavador duplicado | ✅ 409 |
+| Crear cliente con acceso → login del cliente | ✅ |
+| Suspender cliente → login bloqueado (403 con motivo) y **token ya emitido rechazado** | ✅ |
+| Contraseña incorrecta en cuenta suspendida → no revela nada | ✅ "Credenciales inválidas" |
+| Reservar para un cliente suspendido | ✅ 403 |
+| Evidencia con fotos + descripción; solo descripción; ninguna de las dos | ✅ / ✅ / ✅ 400 |
+| `/uploads` sin firma / con firma / firma alterada / caducada | ✅ 403 / 200 / 403 / 403 |
+| Pago con comprobante (PNG y PDF); tipo no permitido | ✅ / ✅ 400 |
+| Acta PDF: admin, cliente dueño, cliente ajeno | ✅ 200 / 200 / 403 |
+| Cliente pidiendo reportes globales | ✅ 403 |
+| Excel: 5 hojas incluyendo "Detalle de lavados" | ✅ |
+| Walk-in: cliente → vehículo → disponibilidad → reserva → el cliente la ve al entrar | ✅ |
+| Anti doble-reserva con el walk-in (agotar cupo de la franja) | ✅ 3 reservas y luego 409 |
+| Build del frontend | ✅ "Compiled successfully" |
+
+### Datos de demo
+Se re-sembró con `prisma/seed-demo.js` (30/08, 31/08, 01/09). Las completadas ahora traen evidencia fotográfica, descripción coherente con la modalidad, checklist, pago —la mitad por transferencia con comprobante— y calificación, para que las funciones nuevas se vean en la presentación. Las imágenes son **marcadores de posición** generados por `demo-imagenes.js` (PNG con zlib, sin dependencias); en operación las sube el lavador desde su teléfono.
+
+Los artefactos de las pruebas manuales de esta sesión se limpiaron de la BD y del volumen de uploads.
+
+### Notas
+- Sigue pendiente el `git push`: el remoto es `https://github.com/megaman0012/lavado_de_carros.git` y la máquina no tiene `gh` ni credential helper. **11 commits locales** sin subir (4 de la sesión 5 + 7 de esta).
+- El backup del volumen `uploads_data` (ítem P3 #17) se vuelve más importante: ahora guarda comprobantes de pago, no solo fotos.
+- Queda abierta la variante (b) del comprobante: que lo suba el cliente y quede pendiente de validación. Reusa el mismo campo y storage.
