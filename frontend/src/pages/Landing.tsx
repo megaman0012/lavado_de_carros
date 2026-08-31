@@ -75,8 +75,7 @@ const Landing: React.FC = () => {
               </span>
               <h3 className="font-semibold text-lg text-slate-800 mt-1">{s.nombre}</h3>
               <p className="text-sm text-slate-500 mt-1 min-h-[40px]">{s.descripcion}</p>
-              <div className="flex items-center justify-between mt-4">
-                <span className="text-2xl font-bold text-slate-800">${s.precio.toFixed(2)}</span>
+              <div className="flex items-center justify-end mt-4">
                 <span className="text-xs text-slate-400 flex items-center gap-1"><Clock size={14} /> {s.duracion_min} min</span>
               </div>
               <Link

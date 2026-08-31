@@ -8,7 +8,7 @@ import { TipoServicio, Estacionamiento, Vehiculo, FranjaDisponibilidad } from '.
 const hoyISO = () => new Date().toISOString().slice(0, 10);
 
 const Reservar: React.FC = () => {
-  const { isAuthenticated, usuario } = useAuth();
+  const { isAuthenticated, usuario, login, logout } = useAuth();
   const location = useLocation() as any;
   const navigate = useNavigate();
 
@@ -27,6 +27,8 @@ const Reservar: React.FC = () => {
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
   const [exito, setExito] = useState<any>(null);
+  const [registro, setRegistro] = useState({ nombre: '', email: '', telefono: '', password: '' });
+  const [registrando, setRegistrando] = useState(false);
 
   const servicio = useMemo(() => servicios.find((s) => s.id === servicioId) || null, [servicios, servicioId]);
 
@@ -63,6 +65,21 @@ const Reservar: React.FC = () => {
       setNuevaPlaca('');
     } catch (e: any) {
       setError(e.message);
+    }
+  };
+
+  const registrarCliente = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!registro.nombre.trim() || !registro.email.trim() || !registro.password) return;
+    setRegistrando(true);
+    setError('');
+    try {
+      const r = await api.post('/auth/registrar', registro);
+      login(r.data.usuario, r.data.token);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setRegistrando(false);
     }
   };
 
@@ -200,8 +217,55 @@ const Reservar: React.FC = () => {
         {paso === 3 && (
           <div className="space-y-4">
             {!isAuthenticated && (
+              <div className="bg-white rounded-xl p-5 space-y-3">
+                <p className="text-sm text-slate-600">
+                  Crea tu cuenta para registrar tu vehículo y reservar. ¿Ya tienes cuenta?{' '}
+                  <Link to="/login" className="text-sky-600 underline font-medium">Inicia sesión</Link>.
+                </p>
+                <form onSubmit={registrarCliente} className="space-y-3">
+                  <input
+                    value={registro.nombre}
+                    onChange={(e) => setRegistro({ ...registro, nombre: e.target.value })}
+                    placeholder="Nombre completo"
+                    required
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 outline-none"
+                  />
+                  <input
+                    type="email"
+                    value={registro.email}
+                    onChange={(e) => setRegistro({ ...registro, email: e.target.value })}
+                    placeholder="Correo electrónico"
+                    required
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 outline-none"
+                  />
+                  <input
+                    value={registro.telefono}
+                    onChange={(e) => setRegistro({ ...registro, telefono: e.target.value })}
+                    placeholder="Teléfono (opcional)"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 outline-none"
+                  />
+                  <input
+                    type="password"
+                    value={registro.password}
+                    onChange={(e) => setRegistro({ ...registro, password: e.target.value })}
+                    placeholder="Contraseña"
+                    required
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={registrando}
+                    className="w-full bg-sky-600 text-white py-2.5 rounded-lg hover:bg-sky-700 disabled:opacity-50"
+                  >
+                    {registrando ? 'Creando cuenta...' : 'Crear cuenta y continuar'}
+                  </button>
+                </form>
+              </div>
+            )}
+            {isAuthenticated && usuario?.rol !== 'cliente' && (
               <div className="bg-amber-50 border border-amber-200 text-amber-700 text-sm rounded-lg p-3">
-                Debes <Link to="/login" className="underline font-medium">iniciar sesión</Link> para continuar con la reserva.
+                La cuenta con la que iniciaste sesión ({usuario?.username}, rol {usuario?.rol}) no es de cliente y no puede tener vehículos ni reservar.{' '}
+                <button onClick={logout} className="underline font-medium">Cierra sesión</button> y crea una cuenta de cliente para continuar.
               </div>
             )}
             {isAuthenticated && usuario?.rol === 'cliente' && (
