@@ -125,12 +125,15 @@ export interface Pago {
   id_reserva: number;
   monto: number;
   metodo: 'efectivo' | 'transferencia' | 'tarjeta';
-  estado: 'pendiente' | 'aprobado' | 'rechazado' | 'reembolsado';
+  // en_verificacion = comprobante subido por el cliente, esperando aprobación
+  estado: 'pendiente' | 'en_verificacion' | 'aprobado' | 'rechazado' | 'reembolsado';
   referencia?: string | null;
   // Comprobante de transferencia adjuntado por el operador (URL firmada)
   comprobante_url?: string | null;
   fecha_pago?: string | null;
   createdAt?: string;
+  // Solo en la bandeja de verificación: contexto de la reserva del comprobante
+  reserva?: Reserva & { total_pagado?: number; saldo?: number };
 }
 
 export interface RegistroLavado {

@@ -16,6 +16,7 @@ import Lavadores from './pages/Lavadores';
 import Reportes from './pages/Reportes';
 import MisTrabajos from './pages/MisTrabajos';
 import Planes from './pages/Planes';
+import PagosPorVerificar from './pages/PagosPorVerificar';
 
 const App: React.FC = () => {
   return (
@@ -85,6 +86,11 @@ const App: React.FC = () => {
           <Route path="/planes" element={
             <ProtectedRoute roles={['admin', 'operador']}>
               <Layout><Planes /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/pagos-por-verificar" element={
+            <ProtectedRoute roles={['admin', 'operador']}>
+              <Layout><PagosPorVerificar /></Layout>
             </ProtectedRoute>
           } />
 

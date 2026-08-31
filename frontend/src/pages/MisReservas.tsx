@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarCheck, XCircle, Camera, Info, Wrench, Wallet, Star, FileText } from 'lucide-react';
+import { CalendarCheck, XCircle, Camera, Info, Wrench, Wallet, Star, FileText, Upload, Clock3 } from 'lucide-react';
 import api from '../services/api';
 import { descargarActa } from '../services/descargas';
 import { Reserva } from '../types';
@@ -218,6 +218,116 @@ const ModalDetalle: React.FC<{ id: number; onClose: () => void }> = ({ id, onClo
   );
 };
 
+
+// Resumen de pagos de una reserva desde la óptica del cliente
+const estadoPago = (r: Reserva) => {
+  const pagos = r.pagos || [];
+  const aprobado = pagos.filter((p) => p.estado === 'aprobado').reduce((s, p) => s + p.monto, 0);
+  const enRevision = pagos.find((p) => p.estado === 'en_verificacion') || null;
+  const rechazado = pagos.filter((p) => p.estado === 'rechazado').slice(-1)[0] || null;
+  const saldo = Math.max((r.precio_final ?? 0) - aprobado, 0);
+  return { aprobado, enRevision, rechazado, saldo };
+};
+
+// ==================== MODAL: SUBIR COMPROBANTE (CLIENTE) ====================
+// El pago queda "en verificación": lo aprueba un operador, nunca el propio cliente.
+const ModalComprobante: React.FC<{ reserva: Reserva; onClose: () => void; onDone: () => void }> =
+  ({ reserva, onClose, onDone }) => {
+    const { saldo } = estadoPago(reserva);
+    const [monto, setMonto] = useState(saldo.toFixed(2));
+    const [referencia, setReferencia] = useState('');
+    const [archivo, setArchivo] = useState<File | null>(null);
+    const [enviando, setEnviando] = useState(false);
+    const [error, setError] = useState('');
+    const [listo, setListo] = useState(false);
+
+    const enviar = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!archivo) { setError('Adjunte la imagen o el PDF del comprobante'); return; }
+      setEnviando(true);
+      setError('');
+      try {
+        const fd = new FormData();
+        fd.append('monto', monto);
+        if (referencia) fd.append('referencia', referencia);
+        fd.append('comprobante', archivo);
+        await api.post(`/reservas/${reserva.id}/pagos/comprobante`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        setListo(true);
+        onDone();
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setEnviando(false);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+          {listo ? (
+            <div className="text-center py-4">
+              <Clock3 className="text-amber-500 mx-auto mb-3" size={44} />
+              <h2 className="text-lg font-bold text-slate-800 mb-1">Comprobante enviado</h2>
+              <p className="text-sm text-slate-500 mb-6">
+                Lo vamos a validar y te avisamos por correo. Mientras tanto aparece como
+                "en verificación" en tu reserva.
+              </p>
+              <button onClick={onClose} className="w-full bg-sky-600 text-white py-2 rounded-lg hover:bg-sky-700">
+                Entendido
+              </button>
+            </div>
+          ) : (
+            <>
+              <h2 className="text-lg font-bold text-slate-800 mb-1">Enviar comprobante</h2>
+              <p className="text-sm text-slate-500 mb-4">
+                {reserva.codigo} · {reserva.tipoServicio?.nombre}
+              </p>
+
+              <div className="bg-slate-50 rounded-lg p-3 text-sm mb-4">
+                Saldo pendiente: <strong className="text-red-600">${saldo.toFixed(2)}</strong>
+              </div>
+
+              <form onSubmit={enviar} className="space-y-3">
+                <div>
+                  <label className="text-xs text-slate-500">Monto transferido</label>
+                  <input type="number" step="0.01" min="0.01" max={saldo} required value={monto}
+                    onChange={(e) => setMonto(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500">N.° de transferencia (opcional)</label>
+                  <input value={referencia} onChange={(e) => setReferencia(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+                </div>
+
+                <label className="block border-2 border-dashed border-slate-300 rounded-lg p-4 text-center text-sm cursor-pointer text-slate-500 hover:border-sky-400 hover:text-sky-600">
+                  <Upload size={18} className="inline mr-1 -mt-0.5" />
+                  {archivo ? archivo.name : 'Adjuntar comprobante (imagen o PDF)'}
+                  <input type="file" accept="image/*,application/pdf" hidden
+                    onChange={(e) => setArchivo(e.target.files?.[0] || null)} />
+                </label>
+
+                {error && <p className="text-sm text-red-600">{error}</p>}
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-300 text-sm">
+                    Cancelar
+                  </button>
+                  <button type="submit" disabled={enviando}
+                    className="bg-sky-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-sky-700 disabled:opacity-50">
+                    {enviando ? 'Enviando…' : 'Enviar comprobante'}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
 const MisReservas: React.FC = () => {
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -225,6 +335,7 @@ const MisReservas: React.FC = () => {
   const [modalDetalle, setModalDetalle] = useState<number | null>(null);
   const [descargando, setDescargando] = useState<number | null>(null);
   const [modalCalificar, setModalCalificar] = useState<Reserva | null>(null);
+  const [modalComprobante, setModalComprobante] = useState<Reserva | null>(null);
 
   const cargar = () => {
     setCargando(true);
@@ -287,6 +398,27 @@ const MisReservas: React.FC = () => {
                 📅 {new Date(r.fecha).toLocaleDateString()} · {r.hora_inicio}–{r.hora_fin}
               </p>
               {r.estacionamiento && <p className="text-sm text-slate-500">📍 {r.estacionamiento.nombre}</p>}
+              {(() => {
+                const { enRevision, rechazado, saldo } = estadoPago(r);
+                if (['cancelada', 'no_asistio'].includes(r.estado)) return null;
+                if (enRevision) return (
+                  <p className="mt-3 text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-lg px-3 py-2 flex items-center gap-1.5">
+                    <Clock3 size={14} className="shrink-0" />
+                    Comprobante por ${enRevision.monto.toFixed(2)} en verificación. Te avisamos por correo.
+                  </p>
+                );
+                if (saldo === 0 && (r.precio_final ?? 0) > 0) return (
+                  <p className="mt-3 text-xs bg-green-50 text-green-700 border border-green-200 rounded-lg px-3 py-2">
+                    Pago confirmado.
+                  </p>
+                );
+                if (rechazado) return (
+                  <p className="mt-3 text-xs bg-red-50 text-red-600 border border-red-200 rounded-lg px-3 py-2">
+                    No pudimos validar tu último comprobante. Puedes enviar otro.
+                  </p>
+                );
+                return null;
+              })()}
               <div className="flex items-center justify-between mt-4 pt-3 border-t">
                 <span className="font-bold text-slate-800">${(r.precio_final ?? 0).toFixed(2)}</span>
                 <div className="flex items-center gap-3">
@@ -296,6 +428,19 @@ const MisReservas: React.FC = () => {
                   >
                     <Info size={16} /> Detalle
                   </button>
+                  {(() => {
+                    const { enRevision, saldo } = estadoPago(r);
+                    const pagable = !['cancelada', 'no_asistio'].includes(r.estado) && saldo > 0 && !enRevision;
+                    return pagable ? (
+                      <button
+                        onClick={() => setModalComprobante(r)}
+                        title="Transferí y envianos el comprobante"
+                        className="flex items-center gap-1 text-sm text-emerald-600 hover:text-emerald-800"
+                      >
+                        <Wallet size={16} /> Pagar
+                      </button>
+                    ) : null;
+                  })()}
                   {['en_proceso', 'completada'].includes(r.estado) && (
                     <button
                       onClick={() => setModalEvidencia(r)}
@@ -348,6 +493,7 @@ const MisReservas: React.FC = () => {
       {modalEvidencia && <ModalEvidenciaCliente reserva={modalEvidencia} onClose={() => setModalEvidencia(null)} />}
       {modalDetalle !== null && <ModalDetalle id={modalDetalle} onClose={() => setModalDetalle(null)} />}
       {modalCalificar && <ModalCalificar reserva={modalCalificar} onClose={() => setModalCalificar(null)} onDone={cargar} />}
+      {modalComprobante && <ModalComprobante reserva={modalComprobante} onClose={() => setModalComprobante(null)} onDone={cargar} />}
     </div>
   );
 };

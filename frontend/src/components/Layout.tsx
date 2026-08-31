@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, CalendarDays, CalendarCheck, Droplets, Car,
-  Users, MapPin, Wrench, BarChart3, LogOut, Menu, X, Home, Building2
+  Users, MapPin, Wrench, BarChart3, LogOut, Menu, X, Home, Building2, BadgeCheck
 } from 'lucide-react';
+import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 interface MenuItem {
@@ -11,6 +12,8 @@ interface MenuItem {
   label: string;
   icon: React.ReactNode;
   roles: string[];
+  // Muestra el contador de comprobantes esperando validación
+  contador?: 'pagosPendientes';
 }
 
 const menuItems: MenuItem[] = [
@@ -24,6 +27,7 @@ const menuItems: MenuItem[] = [
   { to: '/estacionamientos', label: 'Estacionamientos', icon: <MapPin size={20} />, roles: ['admin', 'operador'] },
   { to: '/servicios', label: 'Servicios', icon: <Droplets size={20} />, roles: ['admin', 'operador'] },
   { to: '/lavadores', label: 'Lavadores', icon: <Wrench size={20} />, roles: ['admin', 'operador'] },
+  { to: '/pagos-por-verificar', label: 'Pagos por verificar', icon: <BadgeCheck size={20} />, roles: ['admin', 'operador'], contador: 'pagosPendientes' },
   { to: '/reportes', label: 'Reportes', icon: <BarChart3 size={20} />, roles: ['admin', 'operador'] },
   { to: '/planes', label: 'Planes', icon: <Building2 size={20} />, roles: ['admin', 'operador'] }
 ];
@@ -35,6 +39,17 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const itemsVisibles = menuItems.filter((m) => usuario && m.roles.includes(usuario.rol));
+
+  // Comprobantes esperando validación: se refresca al navegar para que el
+  // operador vea al toque cuando un cliente envía uno.
+  const [pagosPendientes, setPagosPendientes] = useState(0);
+  const interno = usuario?.rol === 'admin' || usuario?.rol === 'operador';
+  useEffect(() => {
+    if (!interno) return;
+    api.get('/pagos/pendientes')
+      .then((r) => setPagosPendientes(r.data.length))
+      .catch(() => setPagosPendientes(0));
+  }, [interno, location.pathname]);
   const inicio = usuario?.rol === 'cliente' ? '/mis-reservas' : usuario?.rol === 'lavador' ? '/mis-trabajos' : '/dashboard';
 
   const handleLogout = () => {
@@ -74,7 +89,12 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 }`}
               >
                 {item.icon}
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.contador === 'pagosPendientes' && pagosPendientes > 0 && (
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${activo ? 'bg-white text-sky-700' : 'bg-amber-500 text-white'}`}>
+                    {pagosPendientes}
+                  </span>
+                )}
               </Link>
             );
           })}

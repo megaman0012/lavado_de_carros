@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { CalendarCheck, CheckCircle2, PlayCircle, Flag, XCircle, UserPlus, Camera, Trash2, Wallet, FileText, Plus, Paperclip } from 'lucide-react';
+import { CalendarCheck, CheckCircle2, PlayCircle, Flag, XCircle, UserPlus, Camera, Trash2, Wallet, FileText, Plus, Paperclip, Check, Clock3 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { descargarActa } from '../services/descargas';
@@ -226,8 +226,22 @@ const ModalPago: React.FC<{ reserva: Reserva; onClose: () => void; onDone: () =>
   };
 
   const pagosAprobados = (detalle.pagos || []).filter((p) => p.estado === 'aprobado');
+  // Comprobantes que envió el cliente y todavía no cuentan como ingreso
+  const enVerificacion = (detalle.pagos || []).filter((p) => p.estado === 'en_verificacion');
   const totalPagado = pagosAprobados.reduce((s, p) => s + p.monto, 0);
   const saldo = Math.max((detalle.precio_final || 0) - totalPagado, 0);
+
+  const verificar = async (pagoId: number, aprobar: boolean) => {
+    const motivo = aprobar ? undefined : window.prompt('Motivo del rechazo (lo verá el cliente):') || '';
+    if (!aprobar && !motivo?.trim()) return;
+    try {
+      await api.put(`/reservas/${reserva.id}/pagos/${pagoId}/verificar`, { aprobar, motivo });
+      recargar();
+      onDone();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   useEffect(() => {
     if (saldo > 0) setMonto(saldo.toFixed(2));
@@ -278,6 +292,37 @@ const ModalPago: React.FC<{ reserva: Reserva; onClose: () => void; onDone: () =>
           <span>Pagado: <strong className="text-green-600">${totalPagado.toFixed(2)}</strong></span>
           <span>Saldo: <strong className={saldo > 0 ? 'text-red-600' : 'text-slate-400'}>${saldo.toFixed(2)}</strong></span>
         </div>
+
+        {enVerificacion.length > 0 && (
+          <div className="border border-amber-200 bg-amber-50 rounded-lg p-3 mb-4">
+            <p className="text-xs font-semibold uppercase text-amber-700 tracking-wide flex items-center gap-1 mb-2">
+              <Clock3 size={14} /> Comprobante enviado por el cliente
+            </p>
+            {enVerificacion.map((p) => (
+              <div key={p.id} className="text-sm">
+                <span className="font-medium">${p.monto.toFixed(2)}</span>
+                <span className="text-slate-500"> · {p.metodo}</span>
+                {p.referencia && <span className="text-slate-500"> · {p.referencia}</span>}
+                {p.comprobante_url && (
+                  <a href={p.comprobante_url} target="_blank" rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-sky-600 hover:underline ml-2">
+                    <Paperclip size={12} /> Ver
+                  </a>
+                )}
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => verificar(p.id, false)}
+                    className="flex-1 border border-red-200 text-red-600 py-1.5 rounded-lg text-xs hover:bg-red-50">
+                    Rechazar
+                  </button>
+                  <button onClick={() => verificar(p.id, true)}
+                    className="flex-1 bg-green-600 text-white py-1.5 rounded-lg text-xs hover:bg-green-700 flex items-center justify-center gap-1">
+                    <Check size={13} /> Aprobar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {pagosAprobados.length === 0 ? (
           <p className="text-xs text-slate-400 italic mb-4">Sin pagos registrados.</p>
