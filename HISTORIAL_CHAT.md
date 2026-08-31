@@ -347,3 +347,44 @@ Como #9 y #12 requieren cuentas reales de terceros que no puedo crear por el usu
 - Los bloqueos manuales (`AsignacionAgenda.id_reserva=null`) bloquean expreso Y profunda en su franja.
 
 ---
+
+---
+
+## Sesión 5 — 2026-08-31
+
+**Pedido del usuario:** commitear los cambios que estaban sin subir y regenerar datos de ayer / hoy / mañana como punto de partida para una presentación del servicio.
+
+### Commits creados
+| Commit | Contenido |
+|---|---|
+| `550e9ad` | Registro de cliente en línea en el paso 3 de `Reservar.tsx` (con login automático, en vez de mandar a `/login` y perder el avance) + aviso cuando la sesión activa no es de rol cliente. `Landing.tsx`: se oculta el precio en las tarjetas, queda solo la duración. |
+| `e86b382` | `backend/prisma/seed-demo.js` (estaba sin trackear): 5 clientes ficticios con vehículos y 12 reservas en ayer/hoy/mañana. |
+| `1e9dce7` | `limpiarDemoAnterior()` en el seed de demo — lo hace re-ejecutable. |
+
+**Push pendiente:** el remoto es `https://github.com/megaman0012/lavado_de_carros.git`; la máquina no tiene `gh` ni credential helper, así que los 3 commits quedaron **solo locales** (`main` adelante 3 de `origin/main`). Requiere que el usuario autentique.
+
+### Seed de demo re-ejecutable
+Problema encontrado: la siembra anterior corrió el 2026-08-28, así que sus "ayer/hoy/mañana" eran 27/28/29 — al 31 de agosto todos los registros estaban vencidos (reservas `confirmada`/`solicitada` con fecha pasada, que es justo lo que no se quiere mostrar en una demo).
+
+Solución: `limpiarDemoAnterior()` borra las reservas de la corrida previa —identificadas por `HistorialReserva.usuario = 'seed-demo'`— y sus hijos en orden (`Calificacion` → `RegistroLavado` → `Pago` → `AsignacionAgenda` → `HistorialReserva` → `Reserva`), porque el schema **no** tiene `onDelete: Cascade`. Los clientes y vehículos ficticios se reutilizan (ya eran idempotentes por `email`/`placa`). Las reservas creadas por clientes reales desde la app no se tocan.
+
+Uso antes de cada presentación:
+```bash
+docker exec -w /app lavado_de_carros-backend-1 node prisma/seed-demo.js
+```
+
+### Datos sembrados (verificados en BD y por API)
+- 12 reservas: 4 el **30/08** (3 completadas con pago, checklist y calificación + 1 `no_asistio`), 4 el **31/08** (1 `en_proceso`, 2 `confirmada`, 1 `solicitada`), 4 el **01/09** (2 `solicitada`, 2 `confirmada`).
+- Reparto entre los 3 estacionamientos demo, la bahía de profunda, y los 3 lavadores (Carlos Pérez, Luis Gómez, Ana Torres).
+- Sobrevive `RES-2026-00013` (Andrés Molina, 31/08 16:00), creada a mano por el usuario probando la app — queda junto a una reserva demo de la misma hora en otro sitio (no hay conflicto de agenda, son estacionamientos distintos).
+
+| Verificación | Resultado |
+|---|---|
+| `GET /api/reportes/kpis` | ✅ lavados_hoy 5, semana/mes 13, ingresos_mes 78, pendientes 4, ocupación_hoy 54%, calificación 4.3 (3 reseñas) |
+| `GET /api/agenda?fecha=2026-08-31` | ✅ capacidades expreso 3 / profunda 2 y asignaciones con cliente, vehículo, servicio, sitio y lavador |
+| Fechas en BD | ✅ 30/08, 31/08, 01/09 |
+
+**Credenciales para la demo:** `admin/admin123`, `operador/operador123`, `lavador/lavador123`; clientes ficticios `<nombre>@demo.com` / `cliente123` (ej. `maria.fernandez@demo.com`).
+
+### Notas
+- Sigue vigente el detalle de timezone de la Sesión 4: el contenedor backend corre en UTC y el negocio en UTC-5, así que el seed calcula "hoy" en UTC. Corriéndolo en horario laboral no hay diferencia; cerca de la medianoche local sí podría desfasar un día.
