@@ -7,10 +7,47 @@
  * Uso: node prisma/seed-demo.js   (requiere que ya haya corrido prisma/seed.js)
  */
 
+const fs = require('fs');
+const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
+const { fotoAntes, fotoDespues, comprobante } = require('./demo-imagenes');
 
 const prisma = new PrismaClient();
+
+const UPLOADS = path.join(__dirname, '../uploads');
+
+// Marcadores de posición para que la evidencia y el acta de servicio tengan
+// contenido en una demostración; en operación real las sube el lavador.
+const guardarEvidencia = (idReserva, tipo, indice) => {
+  const dir = path.join(UPLOADS, 'evidencias', `reserva-${idReserva}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const archivo = `${tipo}-demo-${indice}.png`;
+  const imagen = tipo === 'antes' ? fotoAntes(idReserva + indice) : fotoDespues(idReserva + indice);
+  fs.writeFileSync(path.join(dir, archivo), imagen);
+  return `/uploads/evidencias/reserva-${idReserva}/${archivo}`;
+};
+
+const guardarComprobante = (idReserva) => {
+  const dir = path.join(UPLOADS, 'comprobantes', `reserva-${idReserva}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const archivo = 'comprobante-demo.png';
+  fs.writeFileSync(path.join(dir, archivo), comprobante());
+  return `/uploads/comprobantes/reserva-${idReserva}/${archivo}`;
+};
+
+// La descripción tiene que ser coherente con la modalidad del servicio
+const OBSERVACIONES = {
+  expreso: [
+    'Vehículo recibido con barro en llantas y pasos de rueda. Se realizó lavado exterior completo, aspirado de alfombras y limpieza de tablero. Cliente conforme en la entrega.',
+    'Lavado exterior y encerado de carrocería. Se retiraron restos de savia en el capó. Sin novedades.',
+    'Lavado en el sitio sin retirar el vehículo de su plaza. Exterior, llantas y vidrios. Se avisó al cliente por teléfono al terminar.'
+  ],
+  profunda: [
+    'Limpieza profunda: shampoo de tapicería, desengrase de motor y pulido de faros. Se entregó a las 13:20.',
+    'Detallado completo de interiores: aspirado, shampoo de asientos y alfombras, limpieza de plásticos y encerado exterior.'
+  ]
+};
 
 const diaEn = (offset) => {
   const d = new Date();
@@ -104,14 +141,36 @@ async function crearReserva({ cliente, vehiculo, servicio, estacionamiento, dia,
   }
 
   if (estado === 'completada') {
+    // Una de cada dos se cobra por transferencia, con comprobante adjunto,
+    // para que se vea la función en la demo.
+    const porTransferencia = reserva.id % 2 === 0;
     await prisma.pago.create({
-      data: { id_reserva: reserva.id, monto: servicio.precio, metodo: 'efectivo', estado: 'aprobado', fecha_pago: dia }
+      data: {
+        id_reserva: reserva.id,
+        monto: servicio.precio,
+        metodo: porTransferencia ? 'transferencia' : 'efectivo',
+        referencia: porTransferencia ? `TRF-${100000 + reserva.id}` : null,
+        comprobante_url: porTransferencia ? guardarComprobante(reserva.id) : null,
+        estado: 'aprobado',
+        fecha_pago: dia
+      }
     });
+
+    const antes = [guardarEvidencia(reserva.id, 'antes', 1), guardarEvidencia(reserva.id, 'antes', 2)];
+    const despues = [guardarEvidencia(reserva.id, 'despues', 1), guardarEvidencia(reserva.id, 'despues', 2)];
+
     await prisma.registroLavado.create({
       data: {
         id_reserva: reserva.id,
-        checklist: { exterior: true, interior: true, llantas: true },
-        observaciones: 'Lavado realizado sin novedad.',
+        checklist: servicio.modalidad === 'profunda'
+          ? { exterior: true, interior: true, llantas: true, aspirado: true, tapiceria: true, motor: true }
+          : { exterior: true, interior: true, llantas: true, aspirado: true },
+        observaciones: (() => {
+          const opciones = OBSERVACIONES[servicio.modalidad] || OBSERVACIONES.expreso;
+          return opciones[reserva.id % opciones.length];
+        })(),
+        fotos_antes: JSON.stringify(antes),
+        fotos_despues: JSON.stringify(despues),
         fecha_fin: dia
       }
     });
@@ -148,7 +207,14 @@ async function limpiarDemoAnterior() {
   await prisma.historialReserva.deleteMany(donde);
   await prisma.reserva.deleteMany({ where: { id: { in: ids } } });
 
-  console.log(`🧹 ${ids.length} reservas de una demo anterior eliminadas`);
+  // Y sus archivos, para no dejar evidencia huérfana en el volumen
+  ids.forEach((id) => {
+    ['evidencias', 'comprobantes'].forEach((carpeta) => {
+      fs.rmSync(path.join(UPLOADS, carpeta, `reserva-${id}`), { recursive: true, force: true });
+    });
+  });
+
+  console.log(`🧹 ${ids.length} reservas de una demo anterior eliminadas (con sus archivos)`);
 }
 
 async function main() {
@@ -217,6 +283,8 @@ async function main() {
   await crearReserva({ cliente: maria, vehiculo: vMaria[0], servicio: servicio('Expreso Interior'), estacionamiento: sitio('Torre Empresarial Norte'), dia: manana, hora_inicio: '15:00', id_lavador: lavador('Carlos Pérez').id, estado: 'confirmada' });
 
   console.log('✅ 12 reservas ficticias creadas (4 ayer, 4 hoy, 4 mañana)');
+  console.log('   Las completadas incluyen evidencia fotográfica, descripción del trabajo,');
+  console.log('   pago (algunos por transferencia con comprobante) y calificación.');
   console.log(`\n🎉 Seed de demo completado. Contraseña de todos los clientes ficticios: ${PASSWORD_DEMO}`);
 }
 
