@@ -452,3 +452,60 @@ Los artefactos de las pruebas manuales de esta sesión se limpiaron de la BD y d
 - Sigue pendiente el `git push`: el remoto es `https://github.com/megaman0012/lavado_de_carros.git` y la máquina no tiene `gh` ni credential helper. **11 commits locales** sin subir (4 de la sesión 5 + 7 de esta).
 - El backup del volumen `uploads_data` (ítem P3 #17) se vuelve más importante: ahora guarda comprobantes de pago, no solo fotos.
 - Queda abierta la variante (b) del comprobante: que lo suba el cliente y quede pendiente de validación. Reusa el mismo campo y storage.
+
+---
+
+## Sesión 7 — 2026-08-31
+
+**Pedido del usuario:** implementar la variante (b) del comprobante — que lo suba el cliente y quede pendiente de validación.
+
+### Diseño
+El estado `en_verificacion` se apoya en que **todos los cálculos de totales ya filtraban por `'aprobado'`** (KPIs, ingresos, reportes, acta, saldos del frontend). Un comprobante enviado por el cliente entra en ese estado y por lo tanto no altera nada hasta ser aprobado: no salda la reserva, no suma a ingresos, no aparece como pagado. No hubo que cambiar ninguna agregación.
+
+| Endpoint | Rol | Qué hace |
+|---|---|---|
+| `POST /reservas/:id/pagos/comprobante` | cliente (dueño) | Crea el pago `en_verificacion` con el archivo adjunto |
+| `PUT /reservas/:id/pagos/:pagoId/verificar` | admin/operador | Aprueba (→ `aprobado` + `fecha_pago`) o rechaza (→ `rechazado`, exige motivo) |
+| `GET /pagos/pendientes` | admin/operador | Bandeja con contexto de cada comprobante |
+
+**Lo crítico —que un cliente no pueda auto-aprobarse un pago— se resuelve por separación de rutas:** `verificar` está detrás de `requireRole('admin','operador')` y el `POST /reservas/:id/pagos` del operador (que crea directamente en `aprobado`) también. El cliente solo tiene la ruta que crea en `en_verificacion`.
+
+Decisiones menores:
+- **Un solo comprobante en revisión por reserva** (409 si hay otro): evita envíos repetidos acumulados y que el operador tenga que adivinar cuál corresponde. Tras un rechazo el cliente puede volver a enviar.
+- **El rechazo exige motivo**, que se guarda en el historial y va en el correo al cliente.
+- `anular()` se niega a actuar sobre un pago `en_verificacion` y remite a la bandeja, para que aprobar/rechazar quede en un solo lugar auditable.
+- El monto no puede superar el saldo pendiente; la bandeja además avisa cuando lo declarado no coincide con el saldo.
+
+### Frontend
+- **MisReservas** (cliente): botón "Pagar" con modal (monto, referencia, archivo) y estado visible en la tarjeta — *en verificación* / *pago confirmado* / *rechazado, puede reenviar*.
+- **PagosPorVerificar** (nueva página, admin/operador): comprobante en grande —imagen embebida o enlace si es PDF—, saldo contra monto declarado, y aprobar/rechazar. Entrada de navegación con **contador** de pendientes.
+- **Reservas**: los comprobantes también se verifican desde el modal de pagos, sin cambiar de pantalla.
+
+### Verificación
+| Prueba | Resultado |
+|---|---|
+| Cliente sube comprobante → estado `en_verificacion` | ✅ |
+| No cuenta como pagado ni suma a `ingresos_mes` | ✅ |
+| Cliente intenta aprobar su propio pago | ✅ 403 |
+| Cliente intenta usar el endpoint de pago del operador | ✅ 403 |
+| Cliente ajeno sube comprobante a una reserva que no es suya | ✅ 403 |
+| Segundo comprobante con uno en revisión | ✅ 409 |
+| Monto mayor al saldo / sin archivo / archivo no permitido | ✅ 400 / 400 / 400 |
+| Rechazo sin motivo | ✅ 400 |
+| Rechazo con motivo → sigue sin contar; el cliente puede reenviar | ✅ |
+| Aprobación → salda la reserva y aparece en el acta como "comprobante adjunto" | ✅ |
+| Verificar dos veces el mismo pago | ✅ 400 |
+| Aviso por correo al cliente (aprobado y rechazado) | ✅ registrado en el log (sin SMTP) |
+| Historial con la traza completa (recibido → rechazado → recibido) | ✅ |
+| Contador de la bandeja: 0 → 1 → 0 | ✅ |
+| Build del frontend | ✅ "Compiled successfully" |
+
+### Defecto encontrado de paso
+El `upsert` del usuario en `seed-demo.js` no reescribía la contraseña en la rama `update`: re-sembrar **no** restauraba el `cliente123` que el propio script anuncia, así que un cliente ficticio cuya contraseña se hubiera cambiado en una prueba quedaba inaccesible. Corregido — ahora restablece contraseña y reactiva usuario y ficha.
+
+### Estado de la demo
+Dos reservas confirmadas quedan con un comprobante `en_verificacion` (Jorge Ramírez $55 y Valentina Ríos $22), así la bandeja tiene contenido para mostrar. `ingresos_mes` sigue en $78: confirma que lo pendiente no computa.
+
+### Notas
+- **13 commits locales sin subir** en total; sigue faltando autenticar contra GitHub.
+- Para producción conviene revisar rate limiting (P3 #15) sobre la subida de comprobantes; hoy está acotado por la regla de "uno en revisión a la vez" por reserva.

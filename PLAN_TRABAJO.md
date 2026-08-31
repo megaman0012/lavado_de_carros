@@ -95,16 +95,18 @@ Surge del análisis del usuario sobre huecos encontrados usando el panel. Todos 
 | E6 | `/uploads` detrás de URL firmada | S | ✅ |
 | E7 | Descripción del trabajo en la evidencia (`observaciones` nunca se llenaba) | S | ✅ |
 | E8 | **Acta de servicio en PDF** por reserva, con fotos embebidas | M | ✅ |
-| E9 | Comprobante de transferencia adjunto al pago (variante: lo sube el operador) | S | ✅ |
+| E9 | Comprobante de transferencia adjunto al pago (variante a: lo sube el operador) | S | ✅ |
 | E10 | Hoja "Detalle de lavados" en el Excel | S | ✅ |
 | E11 | **Walk-in completo**: alta de reserva desde el panel a nombre de un cliente | M | ✅ |
 
+| E12 | **Variante b**: el cliente sube su comprobante y el operador lo valida | M | ✅ |
+
 ### Decisiones tomadas con el usuario
-- **Comprobante de transferencia**: lo sube el **operador** (variante a). Que lo suba el cliente y quede pendiente de validación reusa el mismo campo y storage; queda para cuando se decida.
+- **Comprobante de transferencia**: se implementaron **las dos variantes**. El operador puede adjuntar el comprobante que le mandan (a), y el cliente puede enviarlo él mismo desde "Mis Reservas" (b), quedando `en_verificacion` hasta que un operador lo apruebe. Un cliente nunca puede aprobar su propio pago.
 - **Servicios y clientes no se borran**: se desactivan/suspenden. Sus reservas históricas los referencian y borrarlos rompería el histórico y los reportes.
 - **Sin pantalla de "usuarios"**: para 3-5 personas, las credenciales del lavador se gestionan dentro de su ficha.
 
 ### Lo que sigue abierto (P3, sin cambios)
 - #14 Tests backend · #15 Seguridad dura (rate limiting, helmet, refresh token) · #16 CI/CD · #17 Backups de Postgres.
 - El punto #17 se vuelve más importante: el volumen `uploads_data` ahora guarda también comprobantes de pago, no solo fotos.
-- Pendiente de decisión: que el **cliente** suba su comprobante (variante b del ítem E9).
+- Con la variante (b) en producción convendría revisar el ítem #15 (rate limiting): la subida de comprobantes es un endpoint que un cliente autenticado puede llamar repetidamente. Hoy está acotado por "un comprobante en revisión a la vez" por reserva, que cubre el caso normal.
