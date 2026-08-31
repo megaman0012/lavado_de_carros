@@ -57,6 +57,10 @@ backend/
 │   │                        # servicios, lavadores, reservas, agenda, reportes, pagos
 │   ├── controllers/         # lógica HTTP; usa transacciones Prisma para reservas
 │   ├── services/            # lógica de negocio pura (disponibilidad, workflow)
+│   ├── utils/
+│   │   ├── credenciales.js  # contraseñas provisionales legibles + hash
+│   │   ├── firmaArchivos.js # firma/valida las URLs de /uploads
+│   │   └── logger.js
 │   └── swagger.js           # documentación OpenAPI
 ├── Dockerfile
 ├── package.json
@@ -121,9 +125,20 @@ La verificación dentro de la transacción elimina la condición de carrera entr
 
 - Contraseñas con `bcryptjs` (hash + salt).
 - JWT firmado (`JWT_SECRET`), expiración 24h, enviado como `Authorization: Bearer`.
+- `authenticate` revalida en cada request que la cuenta y su ficha (Cliente/Lavador) sigan
+  activas: suspender a alguien tiene efecto inmediato, no al vencer su token.
 - Roles validados en cada endpoint sensible (`requireRole`).
 - El cliente solo accede a sus propias reservas/vehículos (filtro por `id_cliente` del token).
 - Credenciales solo por `.env` (no versionadas); `.env.example` como plantilla.
+- Suspender un cliente o lavador desde el panel sincroniza el `Usuario`: la ficha y el
+  acceso caen juntos. Nada se borra (las reservas históricas los referencian).
+- **Archivos subidos** (evidencia fotográfica, comprobantes de transferencia): `/uploads`
+  no es estático abierto. La API entrega cada ruta firmada (`?exp=&sig=`, HMAC con
+  `JWT_SECRET`, vigencia 8h) y el middleware `verificarFirma` la valida. Se firma la URL en
+  vez de exigir el header `Authorization` porque estas rutas se consumen desde
+  `<img src="...">`, donde el navegador no lo manda. Ver `utils/firmaArchivos.js`.
+- Contraseñas provisionales (alta de cliente en sitio, cuenta de lavador): se generan
+  legibles, se devuelven **una sola vez** en la respuesta y en BD queda solo el hash.
 
 ---
 
