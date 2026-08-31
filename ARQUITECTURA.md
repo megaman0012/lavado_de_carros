@@ -92,8 +92,7 @@ frontend/
 │   │   ├── Agenda.tsx               # calendario con franjas bloqueadas
 │   │   ├── Reservas.tsx             # gestión interna (workflow estados)
 │   │   ├── Catalogos.tsx            # servicios, estacionamientos, lavadores...
-│   │   ├── Reportes.tsx             # KPIs + gráficos
-│   │   └── Dashboard.tsx
+│   │   └── Reportes.tsx             # KPIs + gráficos; con prop `resumen` es el Dashboard
 │   ├── services/api.ts              # axios + interceptores (token, errores)
 │   └── types/index.ts               # interfaces TypeScript
 ├── nginx.conf                       # try_files SPA + proxy /api/
@@ -139,6 +138,13 @@ La verificación dentro de la transacción elimina la condición de carrera entr
   `<img src="...">`, donde el navegador no lo manda. Ver `utils/firmaArchivos.js`.
 - Contraseñas provisionales (alta de cliente en sitio, cuenta de lavador): se generan
   legibles, se devuelven **una sola vez** en la respuesta y en BD queda solo el hash.
+- **Rate limiting** (`middleware/rateLimit.middleware.js`): techo general de 300 req/5 min
+  más límites propios en login (10 fallidos/15 min), registro, subidas de archivos,
+  comprobantes del cliente, exportaciones y webhook. Donde hay sesión la clave es el
+  **id de usuario** y no la IP: la IP se puede falsear con un `X-Forwarded-For` en una
+  llamada directa al 3042, y además una oficina con NAT compartiría un solo cupo. El login
+  se limita por nombre de usuario. `app.set('trust proxy', 1)` — un solo salto (nginx).
+  Store en memoria: sirve para una instancia; con réplicas haría falta Redis.
 
 ---
 

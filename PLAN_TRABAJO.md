@@ -51,7 +51,7 @@
 | # | Ítem | Por qué | Esfuerzo | Decisión |
 |---|------|---------|----------|----------|
 | 14 | **Tests backend** (Jest + supertest: reservas, agenda, anti doble-reserva) | La lógica de solapamiento es crítica; un regression ahí cuesta clientes | M | ☐ |
-| 15 | **Seguridad dura**: rate limiting, helmet, refresh token, expiración JWT | Recomendable antes de exponer a internet público | S-M | ☐ |
+| 15 | **Seguridad dura**: rate limiting, helmet, refresh token, expiración JWT | Recomendable antes de exponer a internet público | S-M | 🔶 rate limiting ✅ (2026-08-31); faltan helmet y refresh token |
 | 16 | **CI/CD** (build + tests automáticos) | Cuando haya tests (ítem 14) | M | ☐ |
 | 17 | **Backups automáticos de Postgres** | Los datos de clientes/pagos son críticos | S | ☐ |
 

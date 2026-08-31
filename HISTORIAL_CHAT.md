@@ -509,3 +509,58 @@ Dos reservas confirmadas quedan con un comprobante `en_verificacion` (Jorge Ram�
 ### Notas
 - **13 commits locales sin subir** en total; sigue faltando autenticar contra GitHub.
 - Para producción conviene revisar rate limiting (P3 #15) sobre la subida de comprobantes; hoy está acotado por la regla de "uno en revisión a la vez" por reserva.
+
+---
+
+## Sesión 8 — 2026-08-31
+
+**Pedido del usuario:** configurar rate limiting, y analizar en qué se diferencian el Dashboard y Reportes.
+
+### Rate limiting (cierra la parte de rate limiting del ítem P3 #15)
+
+`express-rate-limit` ^8.2.0 + `src/middleware/rateLimit.middleware.js`.
+
+| Endpoint | Límite | Clave |
+|---|---|---|
+| `/api` (techo general) | 300 / 5 min | usuario o IP |
+| `POST /auth/login` | 10 **fallidos** / 15 min | usuario + IP |
+| `POST /auth/registrar` | 5 / hora | IP |
+| Subida de evidencia y de pagos | 30 / hora | usuario |
+| Comprobante del cliente | 10 / hora | usuario |
+| Exportaciones y actas | 30 / 10 min | usuario |
+| `POST /pagos/webhook` | 60 / min | IP |
+
+**La decisión de fondo: limitar por usuario, no por IP.** La API está detrás de nginx y además publica el 3042, así que la IP se puede falsear con un `X-Forwarded-For` en una llamada directa; y por el otro lado, una oficina con NAT compartiría un único cupo entre todos los operadores. Donde hay sesión, la clave es el **id de usuario del JWT** (no falseable). El login se limita por **nombre de usuario**, así que la protección contra fuerza bruta aguanta aunque el atacante rote de IP.
+
+Otras decisiones: `app.set('trust proxy', 1)` (un salto, nginx — no `true`, que confiaría en cualquier `X-Forwarded-For`); el login cuenta solo los intentos fallidos, así que a quien entra bien nunca lo toca; `/api/health` exento porque lo consulta Docker; los 429 usan el formato `{ success, message }` del resto de la API y se envían los headers `RateLimit-*`; `RATE_LIMIT_OFF` y `RATE_LIMIT_GENERAL` configurables por `.env`.
+
+**Fallo propio detectado durante las pruebas:** el limitador general se monta antes de `authenticate`, donde `req.usuario` todavía no existe, así que la clave por usuario nunca se aplicaba y todos caían en el mismo cupo por IP. Se detectó porque los contadores de admin y de un cliente venían consecutivos (296 → 295) en vez de independientes. Corregido: el limitador verifica el JWT por su cuenta (HS256, sin consultar la BD) solo para elegir el cupo; la autorización real la sigue haciendo `auth.middleware`.
+
+| Prueba | Resultado |
+|---|---|
+| Headers `RateLimit-*` presentes | ✅ |
+| 10 logins fallidos → 11.º da 429; otro usuario no se ve afectado | ✅ |
+| Contadores independientes por usuario desde la misma IP | ✅ (tras la corrección) |
+| `/api/health` exento | ✅ |
+| Exportaciones: 429 en la 31.ª; el resto de la API sigue respondiendo | ✅ |
+| Comprobantes del cliente: 429 en el 11.º | ✅ |
+| Techo general dispara en su tope | ✅ (probado con `RATE_LIMIT_GENERAL=5`) |
+| `RATE_LIMIT_OFF=true` desactiva todo | ✅ |
+| La aplicación completa sigue funcionando con los límites puestos | ✅ |
+
+Nota: el store es **en memoria**. Sirve para la instancia única del despliegue actual y se reinicia con el contenedor (lo cual, de paso, es la vía para desbloquear a alguien que se pasó de intentos). Con varias réplicas haría falta Redis.
+
+### Análisis: Dashboard vs. Reportes
+
+**No hay ningún componente Dashboard.** `App.tsx` monta `/dashboard` como `<Reportes resumen />` — el mismo componente con un flag. Con `resumen`:
+- no pide `/reportes/por-servicio` ni `/reportes/ingresos`;
+- oculta el encabezado y los botones de exportar Excel/PDF;
+- oculta los dos gráficos.
+
+Queda solo las 5 tarjetas de KPI y el aviso de solicitudes pendientes. Es decir: **el Dashboard es un subconjunto estricto de Reportes**, dos entradas de menú donde una muestra menos que la otra sin aportar nada propio. `ARQUITECTURA.md` listaba un `pages/Dashboard.tsx` que nunca existió; se corrigió.
+
+Recomendación planteada al usuario: o se elimina el Dashboard, o se le da un trabajo distinto —"qué hay que atender ahora" (agenda de hoy, solicitudes por confirmar, comprobantes por validar, lavados en proceso, trabajos sin lavador asignado)— frente a Reportes, que responde "cómo nos fue". Queda pendiente de decisión.
+
+### Notas
+- **20 commits locales sin subir**; sigue faltando autenticar contra GitHub.
+- De la "seguridad dura" (#15) faltan helmet y el refresh token.
