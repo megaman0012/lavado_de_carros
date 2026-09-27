@@ -1,5 +1,5 @@
 /**
- * Recordatorios de reserva - Sistema de Lavado de Carros
+ * Recordatorios de reserva - Total Clean Car
  * Reduce no-shows: avisa por WhatsApp/SMS el día anterior a la reserva.
  * Idempotente: no reenvía si ya hay un 'recordatorio_enviado' en el historial de esa reserva.
  */
@@ -7,11 +7,12 @@
 const prisma = require('../db');
 const { logger } = require('../utils/logger');
 const { enviarRecordatorio } = require('./sms.service');
+const fechas = require('../utils/fechas');
 
 const enviarRecordatoriosDelDia = async () => {
-  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-  const manana = new Date(hoy); manana.setDate(manana.getDate() + 1);
-  const pasadoManana = new Date(hoy); pasadoManana.setDate(pasadoManana.getDate() + 2);
+  const hoy = fechas.hoy();
+  const manana = fechas.sumarDias(hoy, 1);
+  const pasadoManana = fechas.sumarDias(hoy, 2);
 
   const reservas = await prisma.reserva.findMany({
     where: { fecha: { gte: manana, lt: pasadoManana }, estado: { in: ['solicitada', 'confirmada'] } },
@@ -28,7 +29,7 @@ const enviarRecordatoriosDelDia = async () => {
     if (!reserva.cliente?.telefono || reserva.historial.length > 0) continue;
 
     const body = `Hola ${reserva.cliente.nombre}, te recordamos tu lavado (${reserva.tipoServicio?.nombre}) ` +
-      `mañana ${new Date(reserva.fecha).toLocaleDateString()} a las ${reserva.hora_inicio}` +
+      `mañana ${fechas.formatoCorto(reserva.fecha)} a las ${reserva.hora_inicio}` +
       `${reserva.estacionamiento ? ` en ${reserva.estacionamiento.nombre}` : ''}. Código: ${reserva.codigo}.`;
 
     await enviarRecordatorio({ to: reserva.cliente.telefono, body });

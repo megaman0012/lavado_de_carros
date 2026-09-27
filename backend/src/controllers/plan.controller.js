@@ -1,15 +1,14 @@
 /**
- * Controlador de Planes y Suscripciones - Sistema de Lavado de Carros
+ * Controlador de Planes y Suscripciones - Total Clean Car
  * Un Plan se contrata para un Estacionamiento (edificio/condominio): cubre N lavados
  * expreso al mes, compartidos entre todos los residentes que reservan en ese sitio.
  */
 
 const prisma = require('../db');
+const fechas = require('../utils/fechas');
 
-const inicioMesActual = () => {
-  const hoy = new Date();
-  return new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-};
+// Mismo criterio que crear reserva: el mes se cuenta sobre `Reserva.fecha`
+const inicioMesActual = () => fechas.inicioMes(fechas.hoy());
 
 // ==================== PLANES ====================
 

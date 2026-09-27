@@ -1,5 +1,5 @@
 /**
- * Rutas de Lavadores - Sistema de Lavado de Carros
+ * Rutas de Lavadores - Total Clean Car
  */
 
 const express = require('express');

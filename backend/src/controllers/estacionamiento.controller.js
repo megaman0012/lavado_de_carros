@@ -1,5 +1,5 @@
 /**
- * Controlador de Estacionamientos y Plazas - Sistema de Lavado de Carros
+ * Controlador de Estacionamientos y Plazas - Total Clean Car
  */
 
 const prisma = require('../db');

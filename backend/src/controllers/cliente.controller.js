@@ -1,5 +1,5 @@
 /**
- * Controlador de Clientes - Sistema de Lavado de Carros
+ * Controlador de Clientes - Total Clean Car
  */
 
 const prisma = require('../db');

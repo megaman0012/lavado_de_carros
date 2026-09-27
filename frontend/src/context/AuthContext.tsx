@@ -12,6 +12,10 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Pantalla de inicio de cada rol (a donde lleva el login o el logo)
+export const rutaInicio = (rol?: string) =>
+  rol === 'cliente' ? '/mis-reservas' : rol === 'lavador' ? '/mis-trabajos' : '/dashboard';
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [loading, setLoading] = useState(true);

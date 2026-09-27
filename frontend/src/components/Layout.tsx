@@ -5,7 +5,8 @@ import {
   Users, MapPin, Wrench, BarChart3, LogOut, Menu, X, Home, Building2, BadgeCheck
 } from 'lucide-react';
 import api from '../services/api';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, rutaInicio } from '../context/AuthContext';
+import Logo from './Logo';
 
 interface MenuItem {
   to: string;
@@ -50,11 +51,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       .then((r) => setPagosPendientes(r.data.length))
       .catch(() => setPagosPendientes(0));
   }, [interno, location.pathname]);
-  const inicio = usuario?.rol === 'cliente' ? '/mis-reservas' : usuario?.rol === 'lavador' ? '/mis-trabajos' : '/dashboard';
+  const inicio = rutaInicio(usuario?.rol);
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate('/login', { replace: true });
   };
 
   return (
@@ -65,11 +66,10 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-white transform transition-transform duration-200 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex items-center justify-between h-16 px-4 border-b border-slate-800">
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-blue-950 text-white transform transition-transform duration-200 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex items-center justify-between h-16 px-4 border-b border-blue-900">
           <Link to={inicio} className="flex items-center gap-2">
-            <Droplets className="text-sky-400" size={26} />
-            <span className="font-bold text-lg">Lavado<span className="text-sky-400">Carros</span></span>
+            <Logo variante="blanco" tamano="sm" />
           </Link>
           <button className="lg:hidden" onClick={() => setSidebarOpen(false)}>
             <X size={22} />
@@ -85,7 +85,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 to={item.to}
                 onClick={() => setSidebarOpen(false)}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                  activo ? 'bg-sky-600 text-white' : 'text-slate-300 hover:bg-slate-800'
+                  activo ? 'bg-sky-600 text-white' : 'text-slate-300 hover:bg-blue-900'
                 }`}
               >
                 {item.icon}
@@ -100,7 +100,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           })}
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-800">
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-blue-900">
           <div className="flex items-center justify-between">
             <div className="min-w-0">
               <p className="text-sm font-medium truncate">{usuario?.username}</p>

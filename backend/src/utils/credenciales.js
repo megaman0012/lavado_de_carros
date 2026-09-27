@@ -1,5 +1,5 @@
 /**
- * Utilidades de credenciales - Sistema de Lavado de Carros
+ * Utilidades de credenciales - Total Clean Car
  *
  * El panel da de alta clientes atendidos en sitio y lavadores, y en ambos casos
  * hace falta entregarle a la persona una contraseña provisional que pueda leer

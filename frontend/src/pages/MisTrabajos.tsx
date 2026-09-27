@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Wrench, PlayCircle, Flag, Camera } from 'lucide-react';
 import api from '../services/api';
 import { Reserva } from '../types';
+import { hoyISO, fechaCorta } from '../utils/fechas';
+import { urlArchivo } from '../services/config';
 
 const coloresEstado: Record<string, string> = {
   solicitada: 'bg-amber-100 text-amber-700',
@@ -12,7 +14,6 @@ const coloresEstado: Record<string, string> = {
   no_asistio: 'bg-slate-200 text-slate-600'
 };
 
-const hoyISO = () => new Date().toISOString().slice(0, 10);
 
 const parseFotos = (json?: string | null): string[] => {
   try { return json ? JSON.parse(json) : []; } catch { return []; }
@@ -78,8 +79,8 @@ const ModalEvidencia: React.FC<{ reserva: Reserva; onClose: () => void; onDone: 
     ) : (
       <div className="grid grid-cols-3 gap-2 mt-2">
         {fotos.map((f) => (
-          <a key={f} href={f} target="_blank" rel="noreferrer" className="block aspect-square rounded-lg overflow-hidden border border-slate-200 hover:ring-2 hover:ring-sky-400">
-            <img src={f} alt="evidencia" className="w-full h-full object-cover" />
+          <a key={f} href={urlArchivo(f)} target="_blank" rel="noreferrer" className="block aspect-square rounded-lg overflow-hidden border border-slate-200 hover:ring-2 hover:ring-sky-400">
+            <img src={urlArchivo(f)} alt="evidencia" className="w-full h-full object-cover" />
           </a>
         ))}
       </div>
@@ -209,11 +210,14 @@ const MisTrabajos: React.FC = () => {
                   {r.modalidad}
                 </span>
               </p>
+              {(r.adicionales?.length ?? 0) > 0 && (
+                <p className="text-sm font-medium text-sky-700">+ {r.adicionales!.map((a) => a.nombre).join(', ')}</p>
+              )}
               <p className="text-sm text-slate-500">
-                {r.vehiculo?.placa} · {[r.vehiculo?.marca, r.vehiculo?.modelo].filter(Boolean).join(' ')}
+                {r.vehiculo?.placa} · {[r.vehiculo?.tipoVehiculo?.nombre, r.vehiculo?.marca, r.vehiculo?.modelo].filter(Boolean).join(' ')}
               </p>
               <p className="text-sm text-slate-500 mt-2">
-                📅 {new Date(r.fecha).toLocaleDateString()} · {r.hora_inicio}–{r.hora_fin}
+                📅 {fechaCorta(r.fecha)} · {r.hora_inicio}–{r.hora_fin}
               </p>
               {r.estacionamiento && <p className="text-sm text-slate-500">📍 {r.estacionamiento.nombre}</p>}
               {r.cliente && <p className="text-sm text-slate-500">👤 {r.cliente.nombre}{r.cliente.telefono ? ` · ${r.cliente.telefono}` : ''}</p>}

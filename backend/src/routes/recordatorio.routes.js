@@ -1,5 +1,5 @@
 /**
- * Ruta de Recordatorios - Sistema de Lavado de Carros
+ * Ruta de Recordatorios - Total Clean Car
  * Disparo manual (además del cron diario) para operar/probar sin esperar al horario programado.
  */
 

@@ -1,5 +1,5 @@
 /**
- * Rutas de Reservas - Sistema de Lavado de Carros
+ * Rutas de Reservas - Total Clean Car
  */
 
 const express = require('express');
@@ -15,6 +15,7 @@ router.get('/mis-reservas', authenticate, reservaController.misReservas);
 // Lavador autenticado
 router.get('/mis-trabajos', authenticate, requireRole('lavador'), reservaController.misTrabajos);
 router.post('/', authenticate, reservaController.crear);
+router.post('/cotizar', authenticate, reservaController.cotizar);
 router.get('/:id', authenticate, reservaController.obtenerPorId);
 router.put('/:id/cancelar', authenticate, (req, res, next) => {
   // El cliente puede cancelar la suya; interno también

@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { CalendarDays, Lock, Unlock } from 'lucide-react';
 import api from '../services/api';
 import { AsignacionAgenda } from '../types';
+import { hoyISO } from '../utils/fechas';
 
-const hoyISO = () => new Date().toISOString().slice(0, 10);
 
 const Agenda: React.FC = () => {
   const [fecha, setFecha] = useState(hoyISO());

@@ -1,5 +1,5 @@
 /**
- * Middleware de Autenticación y Roles - Sistema de Lavado de Carros
+ * Middleware de Autenticación y Roles - Total Clean Car
  * Roles: admin | operador | lavador | cliente
  */
 

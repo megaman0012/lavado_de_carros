@@ -1,5 +1,5 @@
 /**
- * Firma de URLs de archivos subidos - Sistema de Lavado de Carros
+ * Firma de URLs de archivos subidos - Total Clean Car
  *
  * /uploads se servía con express.static sin ninguna validación: cualquiera que
  * adivinara la ruta veía las fotos de los vehículos, y con los comprobantes de

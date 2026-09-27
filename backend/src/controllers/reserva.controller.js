@@ -1,5 +1,5 @@
 /**
- * Controlador de Reservas - Sistema de Lavado de Carros
+ * Controlador de Reservas - Total Clean Car
  * Entidad central del negocio. Incluye el flujo de estados:
  * solicitada → confirmada → en_proceso → completada | cancelada | no_asistio
  */
@@ -8,11 +8,14 @@ const prisma = require('../db');
 const { firmarReserva, firmarReservas, firmarListaJSON } = require('../utils/firmaArchivos');
 const agendaService = require('../services/agenda.service');
 const notificacionService = require('../services/notificacion.service');
+const cotizacionService = require('../services/cotizacion.service');
+const fechas = require('../utils/fechas');
 
 const incluir = {
   cliente: { select: { id: true, nombre: true, telefono: true, email: true } },
-  vehiculo: true,
+  vehiculo: { include: { tipoVehiculo: true } },
   tipoServicio: true,
+  adicionales: true,
   estacionamiento: { select: { id: true, nombre: true, direccion: true } },
   plaza: true,
   asignaciones: { include: { lavador: { select: { id: true, nombre: true } } } },
@@ -23,7 +26,7 @@ const incluir = {
 
 // Genera el siguiente código RES-YYYY-NNNNN
 const generarCodigo = async (tx) => {
-  const anio = new Date().getFullYear();
+  const anio = fechas.hoy().getUTCFullYear();
   const ultima = await tx.reserva.findFirst({
     where: { codigo: { startsWith: `RES-${anio}-` } },
     orderBy: { codigo: 'desc' }
@@ -33,11 +36,15 @@ const generarCodigo = async (tx) => {
 };
 
 // Crear reserva + bloquear franja (TRANSACCIÓN anti doble-reserva)
+//
+// Flujo de "taquilla": el precio y la duración salen de la cotización (servicio
+// según el tipo de vehículo + adicionales); con esa duración se valida que la
+// función (franja) esté dentro del horario, no haya empezado y tenga cupo.
 const crear = async (req, res) => {
   try {
     const {
       id_vehiculo, id_tipo_servicio, id_estacionamiento,
-      fecha, hora_inicio, observaciones
+      fecha, hora_inicio, observaciones, adicionales
     } = req.body;
 
     // Cliente autenticado (rol cliente) o indicado por operador/admin
@@ -51,6 +58,9 @@ const crear = async (req, res) => {
         message: 'Faltan datos obligatorios (cliente, vehículo, servicio, fecha, hora)'
       });
     }
+    if (!/^\d{2}:\d{2}$/.test(hora_inicio)) {
+      return res.status(400).json({ success: false, message: 'Hora inválida (formato HH:mm)' });
+    }
 
     // Validaciones fuera de transacción
     const cliente = await prisma.cliente.findUnique({ where: { id: id_cliente } });
@@ -61,54 +71,69 @@ const crear = async (req, res) => {
       return res.status(403).json({ success: false, message: 'El cliente está suspendido y no puede reservar' });
     }
 
-    const servicio = await prisma.tipoServicio.findUnique({ where: { id: parseInt(id_tipo_servicio) } });
-    if (!servicio || !servicio.activo) {
-      return res.status(400).json({ success: false, message: 'Servicio no disponible' });
-    }
-
     const vehiculo = await prisma.vehiculo.findUnique({ where: { id: parseInt(id_vehiculo) } });
-    if (!vehiculo || vehiculo.id_cliente !== id_cliente) {
+    if (!vehiculo || vehiculo.id_cliente !== id_cliente || vehiculo.estado !== 'activo') {
       return res.status(400).json({ success: false, message: 'Vehículo inválido para este cliente' });
     }
+
+    const cotizacion = await cotizacionService.cotizar({
+      idTipoServicio: id_tipo_servicio,
+      idTipoVehiculo: vehiculo.id_tipo_vehiculo,
+      adicionales
+    });
+    const { servicio } = cotizacion;
 
     if (servicio.modalidad === 'expreso' && !id_estacionamiento) {
       return res.status(400).json({ success: false, message: 'Debe indicar el estacionamiento para un servicio expreso' });
     }
+    let estacionamiento = null;
+    if (id_estacionamiento) {
+      estacionamiento = await prisma.estacionamiento.findUnique({ where: { id: parseInt(id_estacionamiento) } });
+      if (!estacionamiento || estacionamiento.estado !== 'activo') {
+        return res.status(400).json({ success: false, message: 'Estacionamiento no disponible' });
+      }
+    }
 
-    const fechaReserva = new Date(fecha);
-    if (isNaN(fechaReserva.getTime())) {
+    const dia = fechas.fechaDia(fecha);
+    if (!dia) {
       return res.status(400).json({ success: false, message: 'Fecha inválida' });
     }
-    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-    if (fechaReserva < hoy) {
+    const hoy = fechas.hoy();
+    if (dia < hoy) {
       return res.status(400).json({ success: false, message: 'No se puede reservar en fechas pasadas' });
     }
-
-    const hora_fin = agendaService.aMinutos(hora_inicio) + servicio.duracion_min;
-    if (hora_fin > 24 * 60) {
-      return res.status(400).json({ success: false, message: 'El servicio no cabe en el día seleccionado' });
+    // Como en el cine: una función que ya empezó no se vende
+    if (dia.getTime() === hoy.getTime() &&
+        agendaService.aMinutos(hora_inicio) <= agendaService.aMinutos(fechas.horaActual())) {
+      return res.status(400).json({ success: false, message: 'Ese horario ya pasó. Elija uno más tarde.' });
     }
-    const horaFinStr = `${String(Math.floor(hora_fin / 60)).padStart(2, '0')}:${String(hora_fin % 60).padStart(2, '0')}`;
 
-    // TRANSACCIÓN: verificar cupo y crear todo atómicamente
-    const reserva = await prisma.$transaction(async (tx) => {
-      const dia = new Date(fechaReserva);
-      dia.setHours(0, 0, 0, 0);
-
-      const asignaciones = await tx.asignacionAgenda.findMany({
-        where: { fecha: dia, estado: { not: 'cancelado' } },
-        include: { reserva: { select: { modalidad: true } } }
+    const inicioMin = agendaService.aMinutos(hora_inicio);
+    const finMin = inicioMin + cotizacion.duracion_min;
+    const apertura = estacionamiento?.horario_apertura || '07:00';
+    const cierre = estacionamiento?.horario_cierre || '18:00';
+    if (inicioMin < agendaService.aMinutos(apertura) || finMin > agendaService.aMinutos(cierre)) {
+      return res.status(400).json({
+        success: false,
+        message: `El servicio dura ${cotizacion.duracion_min} min y no cabe en el horario de atención (${apertura}–${cierre})`
       });
+    }
+    const horaFinStr = agendaService.aHHMM(finMin);
 
-      const solapadas = asignaciones.filter(
-        (a) =>
-          (!a.reserva || a.reserva.modalidad === servicio.modalidad) &&
-          agendaService.solapan(hora_inicio, horaFinStr, a.hora_inicio, a.hora_fin)
-      ).length;
+    // TRANSACCIÓN serializable: dos clientes pidiendo el último cupo a la vez no
+    // pueden quedarse ambos con él; el segundo recibe 409 y elige otra franja.
+    const reserva = await prisma.$transaction(async (tx) => {
+      const ocupadas = await agendaService.contarOcupaciones({
+        fecha: dia,
+        horaInicio: hora_inicio,
+        horaFin: horaFinStr,
+        modalidad: servicio.modalidad,
+        idEstacionamiento: id_estacionamiento,
+        db: tx
+      });
+      const capacidad = await agendaService.obtenerCapacidad(servicio.modalidad, estacionamiento, tx);
 
-      const capacidad = await agendaService.obtenerCapacidad(servicio.modalidad);
-
-      if (solapadas >= capacidad) {
+      if (ocupadas >= capacidad) {
         throw Object.assign(
           new Error('Franja no disponible. Por favor elija otro horario.'),
           { statusCode: 409 }
@@ -116,9 +141,10 @@ const crear = async (req, res) => {
       }
 
       // Plan del edificio/condominio: si el estacionamiento tiene una suscripción activa
-      // para esta modalidad y aún hay cupo este mes, el lavado sale gratis (precio_final=0).
+      // para esta modalidad y aún hay cupo este mes, el servicio principal sale gratis.
+      // Los adicionales se cobran siempre: el plan no los incluye.
       let id_suscripcion = null;
-      let precio_final = servicio.precio;
+      let precioServicio = cotizacion.precio_servicio;
       let planCubre = null;
       if (id_estacionamiento) {
         const suscripcion = await tx.suscripcion.findFirst({
@@ -126,13 +152,16 @@ const crear = async (req, res) => {
           include: { plan: true }
         });
         if (suscripcion) {
-          const inicioMes = new Date(dia.getFullYear(), dia.getMonth(), 1);
           const usoMes = await tx.reserva.count({
-            where: { id_suscripcion: suscripcion.id, estado: { not: 'cancelada' }, fecha: { gte: inicioMes } }
+            where: {
+              id_suscripcion: suscripcion.id,
+              estado: { not: 'cancelada' },
+              fecha: { gte: fechas.inicioMes(dia) }
+            }
           });
           if (usoMes < suscripcion.plan.lavados_incluidos) {
             id_suscripcion = suscripcion.id;
-            precio_final = 0;
+            precioServicio = 0;
             planCubre = suscripcion.plan.nombre;
           }
         }
@@ -142,8 +171,8 @@ const crear = async (req, res) => {
         data: {
           codigo: await generarCodigo(tx),
           id_cliente,
-          id_vehiculo: parseInt(id_vehiculo),
-          id_tipo_servicio: parseInt(id_tipo_servicio),
+          id_vehiculo: vehiculo.id,
+          id_tipo_servicio: servicio.id,
           id_estacionamiento: id_estacionamiento ? parseInt(id_estacionamiento) : null,
           id_suscripcion,
           modalidad: servicio.modalidad,
@@ -152,7 +181,15 @@ const crear = async (req, res) => {
           hora_fin: horaFinStr,
           estado: 'solicitada',
           observaciones: observaciones?.trim() || null,
-          precio_final
+          precio_final: precioServicio + cotizacion.precio_adicionales,
+          adicionales: {
+            create: cotizacion.adicionales.map((a) => ({
+              id_adicional: a.id,
+              nombre: a.nombre,
+              precio: a.precio,
+              duracion_min: a.duracion_min
+            }))
+          }
         }
       });
 
@@ -166,28 +203,73 @@ const crear = async (req, res) => {
         }
       });
 
+      const notas = [
+        `${servicio.nombre} para ${cotizacion.tipoVehiculo.nombre}`,
+        planCubre && `cubierto por el plan: ${planCubre}`,
+        cotizacion.adicionales.length > 0 && `adicionales: ${cotizacion.adicionales.map((a) => a.nombre).join(', ')}`
+      ].filter(Boolean);
+
       await tx.historialReserva.create({
         data: {
           id_reserva: nueva.id,
           accion: 'creacion',
           estado_nuevo: 'solicitada',
-          motivo: planCubre ? `Cubierto por el plan: ${planCubre}` : null,
+          motivo: notas.join(' · '),
           usuario: req.usuario.username
         }
       });
 
       return nueva;
-    });
+    }, { isolationLevel: 'Serializable' });
 
     const completa = await prisma.reserva.findUnique({ where: { id: reserva.id }, include: incluir });
     await notificacionService.notificarCreacion(completa);
     res.status(201).json({ success: true, data: completa });
   } catch (error) {
-    if (error.statusCode === 409) {
-      return res.status(409).json({ success: false, message: error.message });
+    if (error.statusCode === 409 || error.code === 'P2034') {
+      return res.status(409).json({
+        success: false,
+        message: error.statusCode === 409 ? error.message : 'Otra persona acaba de reservar ese horario. Intente de nuevo.'
+      });
+    }
+    if (error.statusCode === 400) {
+      return res.status(400).json({ success: false, message: error.message });
     }
     console.error('Error creando reserva:', error);
     res.status(500).json({ success: false, message: 'Error al crear la reserva' });
+  }
+};
+
+// Vista previa de precio y duración (el "resumen de compra" antes de pagar)
+// POST /api/reservas/cotizar { id_vehiculo, id_tipo_servicio, adicionales }
+const cotizar = async (req, res) => {
+  try {
+    const { id_vehiculo, id_tipo_servicio, adicionales } = req.body;
+    const vehiculo = await prisma.vehiculo.findUnique({ where: { id: parseInt(id_vehiculo) } });
+    if (!vehiculo) return res.status(400).json({ success: false, message: 'Vehículo inválido' });
+    if (req.usuario.rol === 'cliente' && vehiculo.id_cliente !== req.usuario.id_cliente) {
+      return res.status(403).json({ success: false, message: 'Acceso denegado' });
+    }
+    const c = await cotizacionService.cotizar({
+      idTipoServicio: id_tipo_servicio, idTipoVehiculo: vehiculo.id_tipo_vehiculo, adicionales
+    });
+    res.json({
+      success: true,
+      data: {
+        servicio: { id: c.servicio.id, nombre: c.servicio.nombre, modalidad: c.servicio.modalidad },
+        tipo_vehiculo: { id: c.tipoVehiculo.id, nombre: c.tipoVehiculo.nombre },
+        precio_servicio: c.precio_servicio,
+        duracion_servicio: c.duracion_servicio,
+        adicionales: c.adicionales,
+        precio_adicionales: c.precio_adicionales,
+        duracion_min: c.duracion_min,
+        total: c.total
+      }
+    });
+  } catch (error) {
+    if (error.statusCode === 400) return res.status(400).json({ success: false, message: error.message });
+    console.error('Error cotizando:', error);
+    res.status(500).json({ success: false, message: 'Error al calcular el precio' });
   }
 };
 
@@ -197,7 +279,8 @@ const listar = async (req, res) => {
     const { fecha, estado, modalidad, id_estacionamiento } = req.query;
     const where = {};
     if (fecha) {
-      const d = new Date(fecha); d.setHours(0, 0, 0, 0);
+      const d = fechas.fechaDia(fecha);
+      if (!d) return res.status(400).json({ success: false, message: 'Fecha inválida' });
       where.fecha = d;
     }
     if (estado) where.estado = estado;
@@ -239,7 +322,8 @@ const misTrabajos = async (req, res) => {
       asignaciones: { some: { id_lavador: req.usuario.id_lavador, estado: { not: 'cancelado' } } }
     };
     if (fecha) {
-      const d = new Date(fecha); d.setHours(0, 0, 0, 0);
+      const d = fechas.fechaDia(fecha);
+      if (!d) return res.status(400).json({ success: false, message: 'Fecha inválida' });
       where.fecha = d;
     }
 
@@ -519,4 +603,4 @@ const calificar = async (req, res) => {
   }
 };
 
-module.exports = { crear, listar, misReservas, misTrabajos, obtenerPorId, cambiarEstado, asignarLavador, subirEvidencia, calificar };
+module.exports = { crear, cotizar, listar, misReservas, misTrabajos, obtenerPorId, cambiarEstado, asignarLavador, subirEvidencia, calificar };

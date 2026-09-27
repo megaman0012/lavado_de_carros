@@ -2,6 +2,8 @@
 export function register() {
   if (process.env.NODE_ENV !== 'production') return;
   if (!('serviceWorker' in navigator)) return;
+  // Dentro de la APK los archivos ya vienen en el paquete: no hace falta caché propia
+  if ((window as any).Capacitor?.isNativePlatform?.()) return;
 
   window.addEventListener('load', () => {
     navigator.serviceWorker

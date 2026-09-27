@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { descargarActa } from '../services/descargas';
 import ModalNuevaReserva from '../components/ModalNuevaReserva';
 import { Reserva, Lavador } from '../types';
+import { hoyISO, fechaCorta } from '../utils/fechas';
+import { urlArchivo } from '../services/config';
 
 const coloresEstado: Record<string, string> = {
   solicitada: 'bg-amber-100 text-amber-700',
@@ -15,7 +17,6 @@ const coloresEstado: Record<string, string> = {
   no_asistio: 'bg-slate-200 text-slate-600'
 };
 
-const hoyISO = () => new Date().toISOString().slice(0, 10);
 
 const parseFotos = (json?: string | null): string[] => {
   try { return json ? JSON.parse(json) : []; } catch { return []; }
@@ -143,8 +144,8 @@ const ModalEvidencia: React.FC<{ reserva: Reserva; onClose: () => void; onDone: 
     ) : (
       <div className="grid grid-cols-3 gap-2 mt-2">
         {fotos.map((f) => (
-          <a key={f} href={f} target="_blank" rel="noreferrer" className="block aspect-square rounded-lg overflow-hidden border border-slate-200 hover:ring-2 hover:ring-sky-400">
-            <img src={f} alt="evidencia" className="w-full h-full object-cover" />
+          <a key={f} href={urlArchivo(f)} target="_blank" rel="noreferrer" className="block aspect-square rounded-lg overflow-hidden border border-slate-200 hover:ring-2 hover:ring-sky-400">
+            <img src={urlArchivo(f)} alt="evidencia" className="w-full h-full object-cover" />
           </a>
         ))}
       </div>
@@ -155,7 +156,10 @@ const ModalEvidencia: React.FC<{ reserva: Reserva; onClose: () => void; onDone: 
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold text-slate-800 mb-1">Evidencia fotográfica</h2>
-        <p className="text-sm text-slate-500 mb-4">{reserva.codigo} · {reserva.tipoServicio?.nombre}</p>
+        <p className="text-sm text-slate-500 mb-4">
+          {reserva.codigo} · {reserva.tipoServicio?.nombre}
+          {(reserva.adicionales?.length ?? 0) > 0 && <> + {reserva.adicionales!.map((a) => a.nombre).join(', ')}</>}
+        </p>
 
         <div className="flex gap-2 mb-3">
           {(['antes', 'despues'] as const).map((t) => (
@@ -285,7 +289,10 @@ const ModalPago: React.FC<{ reserva: Reserva; onClose: () => void; onDone: () =>
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold text-slate-800 mb-1">Pagos</h2>
-        <p className="text-sm text-slate-500 mb-4">{reserva.codigo} · {reserva.tipoServicio?.nombre}</p>
+        <p className="text-sm text-slate-500 mb-4">
+          {reserva.codigo} · {reserva.tipoServicio?.nombre}
+          {(reserva.adicionales?.length ?? 0) > 0 && <> + {reserva.adicionales!.map((a) => a.nombre).join(', ')}</>}
+        </p>
 
         <div className="flex justify-between text-sm bg-slate-50 rounded-lg p-3 mb-4">
           <span>Total: <strong>${(detalle.precio_final ?? 0).toFixed(2)}</strong></span>
@@ -304,7 +311,7 @@ const ModalPago: React.FC<{ reserva: Reserva; onClose: () => void; onDone: () =>
                 <span className="text-slate-500"> · {p.metodo}</span>
                 {p.referencia && <span className="text-slate-500"> · {p.referencia}</span>}
                 {p.comprobante_url && (
-                  <a href={p.comprobante_url} target="_blank" rel="noreferrer"
+                  <a href={urlArchivo(p.comprobante_url)} target="_blank" rel="noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-sky-600 hover:underline ml-2">
                     <Paperclip size={12} /> Ver
                   </a>
@@ -336,7 +343,7 @@ const ModalPago: React.FC<{ reserva: Reserva; onClose: () => void; onDone: () =>
                   {p.referencia && <span className="text-slate-400"> · {p.referencia}</span>}
                   <span className="block text-xs text-slate-400">{p.fecha_pago && new Date(p.fecha_pago).toLocaleString()}</span>
                   {p.comprobante_url && (
-                    <a href={p.comprobante_url} target="_blank" rel="noreferrer"
+                    <a href={urlArchivo(p.comprobante_url)} target="_blank" rel="noreferrer"
                       className="inline-flex items-center gap-1 text-xs text-sky-600 hover:underline mt-0.5">
                       <Paperclip size={12} /> Ver comprobante
                     </a>
@@ -503,13 +510,18 @@ const Reservas: React.FC = () => {
                       <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${r.modalidad === 'profunda' ? 'bg-purple-100 text-purple-600' : 'bg-sky-100 text-sky-600'}`}>
                         {r.modalidad}
                       </span>
+                      {(r.adicionales?.length ?? 0) > 0 && (
+                        <span className="block text-xs text-slate-400">+ {r.adicionales!.map((a) => a.nombre).join(', ')}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {r.cliente?.nombre}
-                      <span className="block text-xs text-slate-400 font-mono">{r.vehiculo?.placa}</span>
+                      <span className="block text-xs text-slate-400 font-mono">
+                        {r.vehiculo?.placa}{r.vehiculo?.tipoVehiculo && ` · ${r.vehiculo.tipoVehiculo.nombre}`}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
-                      {new Date(r.fecha).toLocaleDateString()}
+                      {fechaCorta(r.fecha)}
                       <span className="block text-xs text-slate-400">{r.hora_inicio}–{r.hora_fin}</span>
                     </td>
                     <td className="px-4 py-3">

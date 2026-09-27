@@ -1,0 +1,18 @@
+{
+  "appId": "com.totalpacificgroup.totalcleancar",
+  "appName": "Total Clean Car",
+  "webDir": "build",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#3459A5",
+      "showSpinner": false
+    }
+  }
+}

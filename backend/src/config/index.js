@@ -1,5 +1,5 @@
 /**
- * Configuración Centralizada - Sistema de Lavado de Carros
+ * Configuración Centralizada - Total Clean Car
  */
 
 module.exports = {
@@ -27,7 +27,7 @@ module.exports = {
   SMTP_SECURE: process.env.SMTP_SECURE === 'true',
   SMTP_USER: process.env.SMTP_USER || '',
   SMTP_PASS: process.env.SMTP_PASS || '',
-  SMTP_FROM: process.env.SMTP_FROM || 'Lavado de Carros <no-reply@lavadocarros.local>',
+  SMTP_FROM: process.env.SMTP_FROM || 'Total Clean Car <no-reply@totalcleancar.local>',
 
   // WhatsApp/SMS (recordatorios). Si TWILIO_ACCOUNT_SID no está definido, solo se registran en el log.
   TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',

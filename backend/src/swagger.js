@@ -1,5 +1,5 @@
 /**
- * Configuración de Swagger - Sistema de Lavado de Carros
+ * Configuración de Swagger - Total Clean Car
  */
 
 const swaggerJsdoc = require('swagger-jsdoc');
@@ -8,7 +8,7 @@ const options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'API Lavado de Carros',
+      title: 'API Total Clean Car',
       version: '1.0.0',
       description: 'API REST para reservas de lavado de vehículos en estacionamientos (servicios expresos y limpieza profunda)',
       contact: { name: 'Equipo de Desarrollo' }
@@ -32,9 +32,20 @@ const options = {
             nombre: { type: 'string' },
             descripcion: { type: 'string' },
             modalidad: { type: 'string', enum: ['expreso', 'profunda'] },
-            duracion_min: { type: 'integer' },
-            precio: { type: 'number' },
-            activo: { type: 'boolean' }
+            activo: { type: 'boolean' },
+            precios: {
+              type: 'array',
+              description: 'Precio y duración por tipo de vehículo. Sin fila = no se ofrece a ese tipo.',
+              items: {
+                type: 'object',
+                properties: {
+                  id_tipo_vehiculo: { type: 'integer' },
+                  precio: { type: 'number' },
+                  duracion_min: { type: 'integer' },
+                  activo: { type: 'boolean' }
+                }
+              }
+            }
           }
         },
         Estacionamiento: {

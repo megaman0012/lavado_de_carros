@@ -1,4 +1,4 @@
-// Tipos del dominio - Sistema de Lavado de Carros
+// Tipos del dominio - Total Clean Car
 
 export interface Usuario {
   id: number;
@@ -8,15 +8,56 @@ export interface Usuario {
   lavador?: { id: number; nombre: string };
 }
 
+// Moto, liviano, SUV... Define qué servicios y a qué precio contrata un vehículo
+export interface TipoVehiculo {
+  id: number;
+  codigo: string;
+  nombre: string;
+  descripcion?: string | null;
+  orden_display?: number;
+  activo?: boolean;
+  _count?: { vehiculos: number };
+}
+
+// Precio y duración de un servicio para un tipo de vehículo
+export interface PrecioServicio {
+  id?: number;
+  id_tipo_vehiculo: number;
+  precio: number;
+  duracion_min: number;
+  activo?: boolean;
+  tipoVehiculo?: Pick<TipoVehiculo, 'codigo' | 'nombre'> & { id?: number; activo?: boolean };
+}
+
 export interface TipoServicio {
   id: number;
   nombre: string;
   descripcion?: string | null;
   modalidad: 'expreso' | 'profunda';
-  duracion_min: number;
-  precio: number;
   activo?: boolean;
   orden_display?: number;
+  precios: PrecioServicio[];
+  // Solo en el catálogo público: el precio más bajo entre los tipos de vehículo
+  precio_desde?: number;
+}
+
+export interface ServicioAdicional {
+  id: number;
+  nombre: string;
+  descripcion?: string | null;
+  precio: number;
+  duracion_min: number;
+  activo?: boolean;
+  orden_display?: number;
+}
+
+// Adicional contratado en una reserva (copia de nombre/precio al reservar)
+export interface ReservaAdicional {
+  id: number;
+  id_adicional: number;
+  nombre: string;
+  precio: number;
+  duracion_min: number;
 }
 
 export interface Plaza {
@@ -50,7 +91,9 @@ export interface Vehiculo {
   marca?: string | null;
   modelo?: string | null;
   color?: string | null;
-  tipo?: string | null;
+  id_tipo_vehiculo?: number | null;
+  tipoVehiculo?: Pick<TipoVehiculo, 'id' | 'codigo' | 'nombre'> | null;
+  estado?: string;
   cliente?: { id: number; nombre: string };
 }
 
@@ -84,6 +127,8 @@ export interface FranjaDisponibilidad {
   capacidad: number;
   ocupadas: number;
   cupos: number;
+  // Función que ya empezó (hoy, hora pasada): no se vende
+  pasada?: boolean;
   disponible: boolean;
 }
 
@@ -172,6 +217,7 @@ export interface Reserva {
   pagos?: Pago[];
   id_suscripcion?: number | null;
   calificacion?: Calificacion | null;
+  adicionales?: ReservaAdicional[];
 }
 
 export interface KPIs {

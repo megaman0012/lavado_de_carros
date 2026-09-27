@@ -1,5 +1,5 @@
 /**
- * Controlador de Pagos - Sistema de Lavado de Carros
+ * Controlador de Pagos - Total Clean Car
  * Registro manual de pagos (efectivo/transferencia) sobre una reserva.
  * Pagos con tarjeta quedan mapeados (metodo/estado) para la pasarela de Fase 3.
  */

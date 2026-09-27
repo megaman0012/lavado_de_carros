@@ -1,5 +1,5 @@
 /**
- * Controlador de Autenticación - Sistema de Lavado de Carros
+ * Controlador de Autenticación - Total Clean Car
  */
 
 const bcrypt = require('bcryptjs');

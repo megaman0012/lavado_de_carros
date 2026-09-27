@@ -1,22 +1,25 @@
 /**
- * Notificaciones por email al cliente - Sistema de Lavado de Carros
+ * Notificaciones por email al cliente - Total Clean Car
  * Se disparan en creación, confirmación y completado de la reserva.
  */
 
 const { enviarCorreo } = require('./mail.service');
+const fechas = require('../utils/fechas');
 
 const plantilla = (titulo, cuerpoHtml) => `
   <div style="font-family: Arial, Helvetica, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
-    <h2 style="color: #0284c7; margin-bottom: 4px;">${titulo}</h2>
+    <h2 style="color: #3459A5; margin-bottom: 4px;">${titulo}</h2>
     ${cuerpoHtml}
-    <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">Sistema de Lavado de Carros</p>
+    <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">Total Clean Car</p>
   </div>
 `;
 
 const detalleReserva = (reserva) => `
   <p><strong>${reserva.tipoServicio?.nombre || 'Servicio'}</strong><br>
-  ${new Date(reserva.fecha).toLocaleDateString()} · ${reserva.hora_inicio}–${reserva.hora_fin}
-  ${reserva.estacionamiento ? `<br>${reserva.estacionamiento.nombre}` : ''}</p>
+  ${fechas.formatoCorto(reserva.fecha)} · ${reserva.hora_inicio}–${reserva.hora_fin}
+  ${reserva.estacionamiento ? `<br>${reserva.estacionamiento.nombre}` : ''}
+  ${reserva.adicionales?.length ? `<br>Adicionales: ${reserva.adicionales.map((a) => a.nombre).join(', ')}` : ''}
+  ${reserva.precio_final != null ? `<br>Total: $${reserva.precio_final.toFixed(2)}` : ''}</p>
   <p>Código: <strong>${reserva.codigo}</strong></p>
 `;
 

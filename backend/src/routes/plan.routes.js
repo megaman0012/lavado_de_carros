@@ -1,5 +1,5 @@
 /**
- * Rutas de Planes y Suscripciones - Sistema de Lavado de Carros
+ * Rutas de Planes y Suscripciones - Total Clean Car
  */
 
 const express = require('express');

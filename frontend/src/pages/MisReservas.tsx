@@ -3,6 +3,8 @@ import { CalendarCheck, XCircle, Camera, Info, Wrench, Wallet, Star, FileText, U
 import api from '../services/api';
 import { descargarActa } from '../services/descargas';
 import { Reserva } from '../types';
+import { fechaCorta } from '../utils/fechas';
+import { urlArchivo } from '../services/config';
 
 const coloresEstado: Record<string, string> = {
   solicitada: 'bg-amber-100 text-amber-700',
@@ -41,8 +43,8 @@ const ModalEvidenciaCliente: React.FC<{ reserva: Reserva; onClose: () => void }>
     ) : (
       <div className="grid grid-cols-3 gap-2 mt-2">
         {fotos.map((f) => (
-          <a key={f} href={f} target="_blank" rel="noreferrer" className="block aspect-square rounded-lg overflow-hidden border border-slate-200 hover:ring-2 hover:ring-sky-400">
-            <img src={f} alt="evidencia" className="w-full h-full object-cover" />
+          <a key={f} href={urlArchivo(f)} target="_blank" rel="noreferrer" className="block aspect-square rounded-lg overflow-hidden border border-slate-200 hover:ring-2 hover:ring-sky-400">
+            <img src={urlArchivo(f)} alt="evidencia" className="w-full h-full object-cover" />
           </a>
         ))}
       </div>
@@ -176,8 +178,13 @@ const ModalDetalle: React.FC<{ id: number; onClose: () => void }> = ({ id, onClo
               </span>
             </div>
             <p className="text-sm text-slate-500 mb-4">
-              {reserva.tipoServicio?.nombre} · {new Date(reserva.fecha).toLocaleDateString()} · {reserva.hora_inicio}–{reserva.hora_fin}
+              {reserva.tipoServicio?.nombre} · {fechaCorta(reserva.fecha)} · {reserva.hora_inicio}–{reserva.hora_fin}
             </p>
+            {(reserva.adicionales?.length ?? 0) > 0 && (
+              <p className="text-sm text-slate-500 -mt-3 mb-4">
+                Adicionales: {reserva.adicionales!.map((a) => `${a.nombre} ($${a.precio.toFixed(2)})`).join(', ')}
+              </p>
+            )}
 
             <div className="flex items-center gap-2 text-sm text-slate-600 mb-2">
               <Wrench size={16} className="text-slate-400" />
@@ -391,11 +398,14 @@ const MisReservas: React.FC = () => {
                 </span>
               </div>
               <p className="font-semibold text-slate-800">{r.tipoServicio?.nombre}</p>
+              {(r.adicionales?.length ?? 0) > 0 && (
+                <p className="text-xs text-sky-700">+ {r.adicionales!.map((a) => a.nombre).join(', ')}</p>
+              )}
               <p className="text-sm text-slate-500">
-                {r.vehiculo?.placa} · {[r.vehiculo?.marca, r.vehiculo?.modelo].filter(Boolean).join(' ')}
+                {r.vehiculo?.placa} · {[r.vehiculo?.tipoVehiculo?.nombre, r.vehiculo?.marca, r.vehiculo?.modelo].filter(Boolean).join(' ')}
               </p>
               <p className="text-sm text-slate-500 mt-2">
-                📅 {new Date(r.fecha).toLocaleDateString()} · {r.hora_inicio}–{r.hora_fin}
+                📅 {fechaCorta(r.fecha)} · {r.hora_inicio}–{r.hora_fin}
               </p>
               {r.estacionamiento && <p className="text-sm text-slate-500">📍 {r.estacionamiento.nombre}</p>}
               {(() => {

@@ -1,5 +1,5 @@
 /**
- * Rutas de Estacionamientos y Plazas - Sistema de Lavado de Carros
+ * Rutas de Estacionamientos y Plazas - Total Clean Car
  */
 
 const express = require('express');

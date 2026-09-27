@@ -1,5 +1,5 @@
 /**
- * Rutas de Pagos - Sistema de Lavado de Carros
+ * Rutas de Pagos - Total Clean Car
  * Webhook público para pasarelas de pago (Stripe/MercadoPago) una vez conectadas.
  */
 

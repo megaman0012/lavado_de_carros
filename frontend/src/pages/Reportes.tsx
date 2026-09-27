@@ -3,11 +3,12 @@ import { BarChart3, Car, DollarSign, Percent, AlertCircle, FileSpreadsheet, File
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import api from '../services/api';
 import { descargarArchivo } from '../services/descargas';
+import { hoyISO } from '../utils/fechas';
 import { KPIs } from '../types';
 
 const descargar = (formato: 'excel' | 'pdf') => descargarArchivo(
   `/reportes/exportar/${formato}`,
-  `reporte-lavado-carros-${new Date().toISOString().slice(0, 10)}.${formato === 'excel' ? 'xlsx' : 'pdf'}`
+  `reporte-total-clean-car-${hoyISO()}.${formato === 'excel' ? 'xlsx' : 'pdf'}`
 );
 
 const Reportes: React.FC<{ resumen?: boolean }> = ({ resumen }) => {

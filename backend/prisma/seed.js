@@ -51,20 +51,60 @@ async function main() {
   }
   console.log(`✅ ${lavadores.length} lavadores creados`);
 
-  // ==================== CATÁLOGO DE SERVICIOS ====================
-  const servicios = [
-    { nombre: 'Expreso Exterior', descripcion: 'Lavado exterior a presión + secado', modalidad: 'expreso', duracion_min: 30, precio: 8, orden_display: 1 },
-    { nombre: 'Expreso Interior', descripcion: 'Aspirado + limpieza de tablero y plásticos', modalidad: 'expreso', duracion_min: 40, precio: 10, orden_display: 2 },
-    { nombre: 'Expreso Completo', descripcion: 'Exterior + interior', modalidad: 'expreso', duracion_min: 60, precio: 15, orden_display: 3 },
-    { nombre: 'Expreso Premium', descripcion: 'Completo + encerado y abrillantado', modalidad: 'expreso', duracion_min: 90, precio: 22, orden_display: 4 },
-    { nombre: 'Expreso Motor y Llantas', descripcion: 'Limpieza de motor, llantas y neumáticos', modalidad: 'expreso', duracion_min: 45, precio: 12, orden_display: 5 },
-    { nombre: 'Limpieza Profunda', descripcion: 'Shampoo de tapiz, desmanchado, pulido y detalle integral en bahía', modalidad: 'profunda', duracion_min: 180, precio: 55, orden_display: 6 }
+  // ==================== TIPOS DE VEHÍCULO ====================
+  const tiposVehiculo = [
+    { codigo: 'moto', nombre: 'Moto', descripcion: 'Motocicletas y scooters', orden_display: 1 },
+    { codigo: 'liviano', nombre: 'Liviano', descripcion: 'Sedán, hatchback y autos compactos', orden_display: 2 },
+    { codigo: 'suv', nombre: 'SUV', descripcion: 'SUV y crossover', orden_display: 3 },
+    { codigo: 'camioneta', nombre: 'Camioneta', descripcion: 'Pickup, camioneta doble cabina y van', orden_display: 4 }
   ];
-  for (const s of servicios) {
-    const existe = await prisma.tipoServicio.findFirst({ where: { nombre: s.nombre } });
-    if (!existe) await prisma.tipoServicio.create({ data: s });
+  const tipos = {};
+  for (const t of tiposVehiculo) {
+    tipos[t.codigo] = await prisma.tipoVehiculo.upsert({ where: { codigo: t.codigo }, update: {}, create: t });
   }
-  console.log(`✅ ${servicios.length} tipos de servicio creados`);
+  console.log(`✅ ${tiposVehiculo.length} tipos de vehículo`);
+
+  // ==================== CATÁLOGO DE SERVICIOS ====================
+  // Precio y duración por tipo de vehículo: [precio, minutos]. Sin entrada para
+  // un tipo = el servicio no se ofrece a ese tipo. Valores de ejemplo.
+  const servicios = [
+    { nombre: 'Expreso Exterior', descripcion: 'Lavado exterior a presión + secado', modalidad: 'expreso', orden_display: 1,
+      precios: { moto: [5, 20], liviano: [8, 30], suv: [10, 40], camioneta: [12, 45] } },
+    { nombre: 'Expreso Interior', descripcion: 'Aspirado + limpieza de tablero y plásticos', modalidad: 'expreso', orden_display: 2,
+      precios: { liviano: [10, 40], suv: [12, 50], camioneta: [13, 50] } },
+    { nombre: 'Expreso Completo', descripcion: 'Exterior + interior', modalidad: 'expreso', orden_display: 3,
+      precios: { moto: [8, 30], liviano: [15, 60], suv: [18, 75], camioneta: [20, 80] } },
+    { nombre: 'Expreso Premium', descripcion: 'Completo + encerado y abrillantado', modalidad: 'expreso', orden_display: 4,
+      precios: { liviano: [22, 90], suv: [26, 105], camioneta: [28, 110] } },
+    { nombre: 'Expreso Motor y Llantas', descripcion: 'Limpieza de motor, llantas y neumáticos', modalidad: 'expreso', orden_display: 5,
+      precios: { moto: [7, 30], liviano: [12, 45], suv: [14, 50], camioneta: [15, 55] } },
+    { nombre: 'Limpieza Profunda', descripcion: 'Shampoo de tapiz, desmanchado, pulido y detalle integral en bahía', modalidad: 'profunda', orden_display: 6,
+      precios: { liviano: [55, 180], suv: [65, 210], camioneta: [70, 220] } }
+  ];
+  for (const { precios, ...s } of servicios) {
+    const servicio = await prisma.tipoServicio.findFirst({ where: { nombre: s.nombre } }) || await prisma.tipoServicio.create({ data: s });
+    for (const [codigo, [precio, duracion_min]] of Object.entries(precios)) {
+      await prisma.precioServicio.upsert({
+        where: { id_tipo_servicio_id_tipo_vehiculo: { id_tipo_servicio: servicio.id, id_tipo_vehiculo: tipos[codigo].id } },
+        update: {},
+        create: { id_tipo_servicio: servicio.id, id_tipo_vehiculo: tipos[codigo].id, precio, duracion_min }
+      });
+    }
+  }
+  console.log(`✅ ${servicios.length} tipos de servicio con precios por tipo de vehículo`);
+
+  // ==================== SERVICIOS ADICIONALES ====================
+  const adicionales = [
+    { nombre: 'Aromatizante', descripcion: 'Aromatizante de cabina de larga duración', precio: 2, duracion_min: 0, orden_display: 1 },
+    { nombre: 'Encerado express', descripcion: 'Cera líquida de protección y brillo', precio: 6, duracion_min: 15, orden_display: 2 },
+    { nombre: 'Hidratación de plásticos', descripcion: 'Tablero, paneles y molduras', precio: 4, duracion_min: 10, orden_display: 3 },
+    { nombre: 'Repelente de agua en vidrios', descripcion: 'Parabrisas y ventanas laterales', precio: 5, duracion_min: 10, orden_display: 4 }
+  ];
+  for (const a of adicionales) {
+    const existe = await prisma.servicioAdicional.findFirst({ where: { nombre: a.nombre } });
+    if (!existe) await prisma.servicioAdicional.create({ data: a });
+  }
+  console.log(`✅ ${adicionales.length} servicios adicionales`);
 
   // ==================== ESTACIONAMIENTOS DEMO ====================
   const sitios = [

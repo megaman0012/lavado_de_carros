@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { BadgeCheck, Check, X, Paperclip, FileText, Inbox } from 'lucide-react';
 import api from '../services/api';
 import { Pago } from '../types';
+import { urlArchivo } from '../services/config';
 
 /**
  * Bandeja de comprobantes de transferencia que subieron los clientes.
@@ -96,14 +97,14 @@ const PagosPorVerificar: React.FC = () => {
 
               {p.comprobante_url && (
                 esPdf(p.comprobante_url) ? (
-                  <a href={p.comprobante_url} target="_blank" rel="noreferrer"
+                  <a href={urlArchivo(p.comprobante_url)} target="_blank" rel="noreferrer"
                     className="flex items-center justify-center gap-2 border border-slate-200 rounded-lg py-6 text-sm text-sky-600 hover:bg-slate-50 mb-3">
                     <FileText size={20} /> Abrir comprobante (PDF)
                   </a>
                 ) : (
-                  <a href={p.comprobante_url} target="_blank" rel="noreferrer"
+                  <a href={urlArchivo(p.comprobante_url)} target="_blank" rel="noreferrer"
                     className="block rounded-lg overflow-hidden border border-slate-200 hover:ring-2 hover:ring-sky-400 mb-3">
-                    <img src={p.comprobante_url} alt="Comprobante" className="w-full max-h-64 object-contain bg-slate-50" />
+                    <img src={urlArchivo(p.comprobante_url)} alt="Comprobante" className="w-full max-h-64 object-contain bg-slate-50" />
                   </a>
                 )
               )}

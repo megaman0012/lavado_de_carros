@@ -1,16 +1,24 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Droplets, LogIn } from 'lucide-react';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { LogIn } from 'lucide-react';
 import api from '../services/api';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, rutaInicio } from '../context/AuthContext';
+import Logo from '../components/Logo';
 
 const Login: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
-  const { login } = useAuth();
+  const { login, isAuthenticated, usuario, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation() as any;
+
+  // Con sesión abierta no se muestra el formulario. Antes, volver atrás desde el
+  // panel caía aquí y parecía que la sesión se había perdido (seguía abierta).
+  if (!loading && isAuthenticated && usuario) {
+    return <Navigate to={location.state?.from?.pathname || rutaInicio(usuario.rol)} replace />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,8 +27,8 @@ const Login: React.FC = () => {
     try {
       const res = await api.post('/auth/login', { username, password });
       login(res.data.usuario, res.data.token);
-      const rol = res.data.usuario.rol;
-      navigate(rol === 'cliente' ? '/mis-reservas' : rol === 'lavador' ? '/mis-trabajos' : '/dashboard');
+      // replace: el login no queda en el historial, así "atrás" no vuelve a él
+      navigate(location.state?.from?.pathname || rutaInicio(res.data.usuario.rol), { replace: true });
     } catch (err: any) {
       setError(err.message || 'Credenciales inválidas');
     } finally {
@@ -32,10 +40,7 @@ const Login: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-sky-500 to-blue-700 px-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
         <div className="flex flex-col items-center mb-6">
-          <div className="bg-sky-100 rounded-full p-4 mb-3">
-            <Droplets className="text-sky-600" size={36} />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-800">LavadoCarros</h1>
+          <Link to="/" className="mb-3"><Logo tamano="lg" /></Link>
           <p className="text-sm text-slate-500">Inicia sesión para reservar o gestionar</p>
         </div>
 

@@ -49,11 +49,10 @@ const OBSERVACIONES = {
   ]
 };
 
+// Días de negocio (medianoche UTC, "hoy" según APP_TZ): ver src/utils/fechas.js
+const fechas = require('../src/utils/fechas');
 const diaEn = (offset) => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + offset);
-  return d;
+  return fechas.sumarDias(fechas.hoy(), offset);
 };
 
 const sumarMin = (hhmm, min) => {
@@ -96,13 +95,23 @@ async function crearCliente({ nombre, email, telefono, password, vehiculos }) {
   const vehiculosCreados = [];
   for (const v of vehiculos) {
     const existente = await prisma.vehiculo.findUnique({ where: { placa: v.placa } });
-    const vehiculo = existente || await prisma.vehiculo.create({ data: { ...v, id_cliente: cliente.id } });
+    const { tipo, ...datos } = v;
+    const tipoVehiculo = await prisma.tipoVehiculo.findUnique({ where: { codigo: tipo } });
+    const vehiculo = existente || await prisma.vehiculo.create({
+      data: { ...datos, id_cliente: cliente.id, id_tipo_vehiculo: tipoVehiculo?.id ?? null }
+    });
     vehiculosCreados.push(vehiculo);
   }
   return { cliente, vehiculos: vehiculosCreados };
 }
 
-async function crearReserva({ cliente, vehiculo, servicio, estacionamiento, dia, hora_inicio, id_lavador, estado, comprobantePendiente }) {
+async function crearReserva({ cliente, vehiculo, servicio: tipoServicio, estacionamiento, dia, hora_inicio, id_lavador, estado, comprobantePendiente }) {
+  // Precio y duración salen de la tarifa del servicio para el tipo del vehículo
+  const tarifa = await prisma.precioServicio.findUnique({
+    where: { id_tipo_servicio_id_tipo_vehiculo: { id_tipo_servicio: tipoServicio.id, id_tipo_vehiculo: vehiculo.id_tipo_vehiculo } }
+  });
+  if (!tarifa) throw new Error(`Sin tarifa de "${tipoServicio.nombre}" para el vehículo ${vehiculo.placa}: corra antes el seed principal`);
+  const servicio = { ...tipoServicio, precio: tarifa.precio, duracion_min: tarifa.duracion_min };
   const hora_fin = sumarMin(hora_inicio, servicio.duracion_min);
 
   const reserva = await prisma.reserva.create({

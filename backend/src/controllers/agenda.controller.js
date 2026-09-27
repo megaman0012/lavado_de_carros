@@ -1,10 +1,11 @@
 /**
- * Controlador de Agenda - Sistema de Lavado de Carros
+ * Controlador de Agenda - Total Clean Car
  * Disponibilidad de franjas, vista del día y bloqueos manuales.
  */
 
 const prisma = require('../db');
 const agendaService = require('../services/agenda.service');
+const fechas = require('../utils/fechas');
 
 // GET /api/agenda/disponibilidad?fecha=&modalidad=&duracion_min=&id_estacionamiento=
 const disponibilidad = async (req, res) => {
@@ -27,7 +28,7 @@ const disponibilidad = async (req, res) => {
 
     res.json({ success: true, data: resultado });
   } catch (error) {
-    if (error.statusCode === 404) return res.status(404).json({ success: false, message: error.message });
+    if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
     console.error('Error calculando disponibilidad:', error);
     res.status(500).json({ success: false, message: 'Error al calcular disponibilidad' });
   }
@@ -39,7 +40,8 @@ const vistaDia = async (req, res) => {
     const { fecha } = req.query;
     if (!fecha) return res.status(400).json({ success: false, message: 'fecha es obligatoria' });
 
-    const dia = new Date(fecha); dia.setHours(0, 0, 0, 0);
+    const dia = fechas.fechaDia(fecha);
+    if (!dia) return res.status(400).json({ success: false, message: 'Fecha inválida' });
 
     const asignaciones = await prisma.asignacionAgenda.findMany({
       where: { fecha: dia },
@@ -65,7 +67,7 @@ const vistaDia = async (req, res) => {
     res.json({
       success: true,
       data: {
-        fecha: dia,
+        fecha: fechas.aISO(dia),
         capacidades: { expreso: capacidadExpreso, profunda: capacidadProfunda },
         asignaciones
       }
@@ -89,7 +91,8 @@ const crearBloqueo = async (req, res) => {
       return res.status(400).json({ success: false, message: 'hora_fin debe ser mayor a hora_inicio' });
     }
 
-    const dia = new Date(fecha); dia.setHours(0, 0, 0, 0);
+    const dia = fechas.fechaDia(fecha);
+    if (!dia) return res.status(400).json({ success: false, message: 'Fecha inválida' });
 
     const bloqueo = await prisma.asignacionAgenda.create({
       data: {

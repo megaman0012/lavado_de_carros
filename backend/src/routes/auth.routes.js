@@ -1,5 +1,5 @@
 /**
- * Rutas de Autenticación - Sistema de Lavado de Carros
+ * Rutas de Autenticación - Total Clean Car
  */
 
 const express = require('express');

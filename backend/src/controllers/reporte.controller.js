@@ -1,5 +1,5 @@
 /**
- * Controlador de Reportes - Sistema de Lavado de Carros
+ * Controlador de Reportes - Total Clean Car
  * KPIs del negocio: lavados, ingresos, ocupación de agenda.
  * Exportación a Excel/PDF de los mismos datos.
  */
@@ -10,8 +10,12 @@ const path = require('path');
 const fs = require('fs');
 const prisma = require('../db');
 const { UPLOAD_ROOT } = require('../config/upload');
+const fechas = require('../utils/fechas');
 
-const inicioDia = (f) => { const d = new Date(f); d.setHours(0, 0, 0, 0); return d; };
+// Día de negocio (medianoche UTC, ver utils/fechas.js). Un texto inválido se ignora.
+const inicioDia = (f) => fechas.fechaDia(f) || fechas.hoy();
+const LOGO = path.join(__dirname, '..', '..', 'assets', 'logo-mark.png');
+const ahoraTexto = () => new Date().toLocaleString('es-EC', { timeZone: fechas.APP_TZ });
 
 const rangoQuery = (req) => ({
   desde: req.query.desde ? inicioDia(req.query.desde) : new Date(0),
@@ -21,10 +25,12 @@ const rangoQuery = (req) => ({
 // ==================== CÁLCULOS (compartidos entre JSON y exportación) ====================
 
 const calcularKPIs = async () => {
-  const hoy = inicioDia(new Date());
-  const manana = new Date(hoy); manana.setDate(manana.getDate() + 1);
-  const inicioSemana = new Date(hoy); inicioSemana.setDate(inicioSemana.getDate() - inicioSemana.getDay());
-  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  // "Hoy" en la zona del negocio: el contenedor corre en UTC y desde las 19:00
+  // de Ecuador ya estaría contando el día siguiente
+  const hoy = fechas.hoy();
+  const manana = fechas.sumarDias(hoy, 1);
+  const inicioSemana = fechas.sumarDias(hoy, -hoy.getUTCDay());
+  const inicioMes = fechas.inicioMes(hoy);
 
   const [hoyCount, semanaCount, mesCount, ingresosMes, pendientesHoy, porEstado, calificaciones] = await Promise.all([
     prisma.reserva.count({ where: { fecha: { gte: hoy, lt: manana }, estado: { notIn: ['cancelada'] } } }),
@@ -148,8 +154,8 @@ const porEstacionamiento = async (req, res) => {
 
 const ingresos = async (req, res) => {
   try {
-    const hasta = req.query.hasta ? inicioDia(req.query.hasta) : new Date();
-    const desde = req.query.desde ? inicioDia(req.query.desde) : new Date(hasta.getTime() - 30 * 86400000);
+    const hasta = req.query.hasta ? inicioDia(req.query.hasta) : fechas.hoy();
+    const desde = req.query.desde ? inicioDia(req.query.desde) : fechas.sumarDias(hasta, -30);
     res.json({ success: true, data: await calcularIngresos(desde, hasta) });
   } catch (error) {
     console.error('Error reporte ingresos:', error);
@@ -223,7 +229,7 @@ const exportarExcel = async (req, res) => {
     const { kpisData, porServicioData, porEstacionamientoData, ingresosData, detalleData } = await datosExportacion(req);
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Sistema de Lavado de Carros';
+    workbook.creator = 'Total Clean Car';
     workbook.created = new Date();
 
     const estiloHeader = { font: { bold: true, color: { argb: 'FFFFFFFF' } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0284C7' } } };
@@ -296,7 +302,7 @@ const exportarExcel = async (req, res) => {
     hojaDetalle.autoFilter = { from: 'A1', to: { row: 1, column: hojaDetalle.columns.length } };
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="reporte-lavado-carros-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="reporte-total-clean-car-${new Date().toISOString().slice(0, 10)}.xlsx"`);
     await workbook.xlsx.write(res);
     res.end();
   } catch (error) {
@@ -305,19 +311,28 @@ const exportarExcel = async (req, res) => {
   }
 };
 
+// Logo de Total Clean Car arriba a la derecha de cada PDF. Si el archivo no
+// está (imagen vieja del contenedor), el PDF sale igual, sin logo.
+const encabezadoMarca = (doc) => {
+  if (!fs.existsSync(LOGO)) return;
+  const alto = 46;
+  doc.image(LOGO, doc.page.width - doc.page.margins.right - alto * 0.65, doc.page.margins.top - 10, { height: alto });
+};
+
 // GET /api/reportes/exportar/pdf?desde=&hasta=
 const exportarPDF = async (req, res) => {
   try {
     const { kpisData, porServicioData, porEstacionamientoData } = await datosExportacion(req);
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="reporte-lavado-carros-${new Date().toISOString().slice(0, 10)}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="reporte-total-clean-car-${new Date().toISOString().slice(0, 10)}.pdf"`);
 
     const doc = new PDFDocument({ margin: 50 });
     doc.pipe(res);
 
-    doc.fontSize(18).fillColor('#0284c7').text('Reporte - Sistema de Lavado de Carros', { align: 'left' });
-    doc.fontSize(10).fillColor('#64748b').text(`Generado el ${new Date().toLocaleString()}`);
+    encabezadoMarca(doc);
+    doc.fontSize(18).fillColor('#3459A5').text('Reporte - Total Clean Car', { align: 'left' });
+    doc.fontSize(10).fillColor('#64748b').text(`Generado el ${ahoraTexto()}`);
     doc.moveDown(1.5);
 
     doc.fontSize(14).fillColor('#1e293b').text('Resumen');
@@ -426,13 +441,14 @@ const actaServicio = async (req, res) => {
       where: { id: parseInt(req.params.id) },
       include: {
         cliente: true,
-        vehiculo: true,
+        vehiculo: { include: { tipoVehiculo: true } },
         tipoServicio: true,
         estacionamiento: true,
         asignaciones: { include: { lavador: { select: { nombre: true } } } },
         registro: true,
         pagos: true,
-        calificacion: true
+        calificacion: true,
+        adicionales: true
       }
     });
     if (!reserva) return res.status(404).json({ success: false, message: 'Reserva no encontrada' });
@@ -459,7 +475,7 @@ const actaServicio = async (req, res) => {
     const titulo = (texto, espacioMin = 90) => {
       if (doc.y + espacioMin > doc.page.height - doc.page.margins.bottom) doc.addPage();
       doc.moveDown(1);
-      doc.fontSize(13).fillColor('#0284c7').text(texto);
+      doc.fontSize(13).fillColor('#3459A5').text(texto);
       doc.moveTo(X, doc.y + 2).lineTo(X + ANCHO, doc.y + 2).strokeColor('#e2e8f0').stroke();
       doc.moveDown(0.6);
     };
@@ -469,17 +485,21 @@ const actaServicio = async (req, res) => {
     };
 
     // Encabezado
-    doc.fontSize(20).fillColor('#0284c7').text('Acta de servicio');
+    encabezadoMarca(doc);
+    doc.fontSize(20).fillColor('#3459A5').text('Acta de servicio');
     doc.fontSize(10).fillColor('#64748b')
-      .text(`${reserva.codigo}  ·  emitida el ${new Date().toLocaleString('es-EC')}`);
+      .text(`${reserva.codigo}  ·  emitida el ${ahoraTexto()}`);
 
     titulo('Datos del servicio');
     campo('Cliente', reserva.cliente?.nombre);
     campo('Teléfono', reserva.cliente?.telefono);
-    campo('Vehículo', [reserva.vehiculo?.placa, reserva.vehiculo?.marca, reserva.vehiculo?.modelo, reserva.vehiculo?.color].filter(Boolean).join(' · '));
+    campo('Vehículo', [reserva.vehiculo?.placa, reserva.vehiculo?.tipoVehiculo?.nombre, reserva.vehiculo?.marca, reserva.vehiculo?.modelo, reserva.vehiculo?.color].filter(Boolean).join(' · '));
     campo('Servicio', `${reserva.tipoServicio?.nombre} (${reserva.tipoServicio?.modalidad})`);
+    if (reserva.adicionales.length > 0) {
+      campo('Adicionales', reserva.adicionales.map((a) => `${a.nombre} ($${a.precio.toFixed(2)})`).join(', '));
+    }
     campo('Lugar', reserva.estacionamiento?.nombre || 'Bahía de lavado profundo');
-    campo('Fecha', `${reserva.fecha.toISOString().slice(0, 10)}  ${reserva.hora_inicio} - ${reserva.hora_fin}`);
+    campo('Fecha', `${fechas.formatoCorto(reserva.fecha)}  ${reserva.hora_inicio} - ${reserva.hora_fin}`);
     campo('Lavador', reserva.asignaciones.map((a) => a.lavador?.nombre).filter(Boolean).join(', ') || 'Sin asignar');
     campo('Estado', reserva.estado);
 
@@ -559,12 +579,12 @@ const actaServicio = async (req, res) => {
     titulo('Pagos', 160); // reserva alto suficiente para no partir la sección
     const aprobados = reserva.pagos.filter((p) => p.estado === 'aprobado');
     const pagado = aprobados.reduce((sum, p) => sum + p.monto, 0);
-    campo('Valor del servicio', `$${(reserva.precio_final ?? 0).toFixed(2)}`);
+    campo('Valor total', `$${(reserva.precio_final ?? 0).toFixed(2)}`);
     if (aprobados.length === 0) {
       doc.fontSize(10).fillColor('#94a3b8').text('Sin pagos registrados.');
     } else {
       aprobados.forEach((p) => {
-        const fecha = p.fecha_pago ? new Date(p.fecha_pago).toLocaleDateString('es-EC') : '';
+        const fecha = p.fecha_pago ? new Date(p.fecha_pago).toLocaleDateString('es-EC', { timeZone: fechas.APP_TZ }) : '';
         const extras = [p.referencia, p.comprobante_url ? 'comprobante adjunto' : null].filter(Boolean).join(' · ');
         doc.fontSize(10).fillColor('#334155')
           .text(`$${p.monto.toFixed(2)} — ${p.metodo} — ${fecha}${extras ? ` (${extras})` : ''}`);
@@ -587,7 +607,7 @@ const actaServicio = async (req, res) => {
 
     doc.moveDown(2);
     doc.fontSize(8).fillColor('#94a3b8')
-      .text('Documento generado automáticamente por el Sistema de Lavado de Carros.', { align: 'center' });
+      .text('Documento generado automáticamente por Total Clean Car.', { align: 'center' });
 
     doc.end();
   } catch (error) {

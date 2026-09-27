@@ -1,5 +1,5 @@
 /**
- * Servicio de WhatsApp/SMS (Twilio) - Sistema de Lavado de Carros
+ * Servicio de WhatsApp/SMS (Twilio) - Total Clean Car
  * Mismo patrón "seguro por defecto" que mail.service.js: sin credenciales de Twilio
  * en .env, el mensaje solo se registra en el log en vez de fallar.
  */

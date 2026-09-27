@@ -1,5 +1,5 @@
 /**
- * Rutas de Reportes - Sistema de Lavado de Carros
+ * Rutas de Reportes - Total Clean Car
  */
 
 const express = require('express');

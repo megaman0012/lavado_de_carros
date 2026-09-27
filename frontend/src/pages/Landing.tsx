@@ -1,11 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Droplets, Clock, MapPin, ShieldCheck, CalendarCheck, LogIn } from 'lucide-react';
+import { Clock, MapPin, ShieldCheck, CalendarCheck, LogIn, LayoutDashboard } from 'lucide-react';
 import api from '../services/api';
 import { TipoServicio } from '../types';
+import { useAuth, rutaInicio } from '../context/AuthContext';
+import Logo from '../components/Logo';
+import { IconoTipo } from '../components/FormVehiculo';
+import { dinero } from '../utils/catalogo';
 
 const Landing: React.FC = () => {
   const [servicios, setServicios] = useState<TipoServicio[]>([]);
+  const { isAuthenticated, usuario } = useAuth();
 
   useEffect(() => {
     api.get('/public/servicios')
@@ -18,19 +23,25 @@ const Landing: React.FC = () => {
       {/* Header */}
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Droplets className="text-sky-600" size={28} />
-            <span className="font-bold text-xl text-slate-800">Lavado<span className="text-sky-600">Carros</span></span>
-          </div>
-          <Link to="/login" className="flex items-center gap-2 text-sm bg-sky-600 text-white px-4 py-2 rounded-lg hover:bg-sky-700">
-            <LogIn size={16} /> Ingresar
-          </Link>
+          <Link to="/"><Logo /></Link>
+          {/* Con sesión abierta se ofrece volver al panel, no "Ingresar": antes
+              la portada parecía decir que la sesión se había cerrado */}
+          {isAuthenticated ? (
+            <Link to={rutaInicio(usuario?.rol)} className="flex items-center gap-2 text-sm bg-sky-600 text-white px-4 py-2 rounded-lg hover:bg-sky-700">
+              <LayoutDashboard size={16} /> Mi cuenta
+            </Link>
+          ) : (
+            <Link to="/login" className="flex items-center gap-2 text-sm bg-sky-600 text-white px-4 py-2 rounded-lg hover:bg-sky-700">
+              <LogIn size={16} /> Ingresar
+            </Link>
+          )}
         </div>
       </header>
 
       {/* Hero */}
       <section className="bg-gradient-to-br from-sky-500 to-blue-700 text-white">
         <div className="max-w-6xl mx-auto px-4 py-20 text-center">
+          <Logo variante="blanco" tamano="lg" className="mb-8" />
           <h1 className="text-4xl md:text-5xl font-bold mb-4">
             Tu auto limpio mientras está estacionado
           </h1>
@@ -75,9 +86,17 @@ const Landing: React.FC = () => {
               </span>
               <h3 className="font-semibold text-lg text-slate-800 mt-1">{s.nombre}</h3>
               <p className="text-sm text-slate-500 mt-1 min-h-[40px]">{s.descripcion}</p>
-              <div className="flex items-center justify-end mt-4">
-                <span className="text-xs text-slate-400 flex items-center gap-1"><Clock size={14} /> {s.duracion_min} min</span>
-              </div>
+              {/* Precio por tipo de vehículo, como la tarifa por sala en un cine */}
+              <ul className="mt-4 space-y-1.5">
+                {s.precios.map((p) => (
+                  <li key={p.id_tipo_vehiculo} className="flex items-center gap-2 text-sm">
+                    <IconoTipo codigo={p.tipoVehiculo?.codigo} size={16} className="text-slate-400" />
+                    <span className="flex-1 text-slate-600">{p.tipoVehiculo?.nombre}</span>
+                    <span className="text-xs text-slate-400 flex items-center gap-1"><Clock size={12} /> {p.duracion_min} min</span>
+                    <span className="w-16 text-right font-semibold text-slate-800">{dinero(p.precio)}</span>
+                  </li>
+                ))}
+              </ul>
               <Link
                 to="/reservar"
                 state={{ servicioId: s.id }}
@@ -91,7 +110,7 @@ const Landing: React.FC = () => {
       </section>
 
       <footer className="bg-slate-900 text-slate-400 text-center py-6 text-sm">
-        © 2026 LavadoCarros — Sistema de reservas de lavado
+        © 2026 Total Clean Car — Lavado de vehículos a domicilio
       </footer>
     </div>
   );

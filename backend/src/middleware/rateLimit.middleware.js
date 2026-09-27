@@ -1,5 +1,5 @@
 /**
- * Límites de tasa (rate limiting) - Sistema de Lavado de Carros
+ * Límites de tasa (rate limiting) - Total Clean Car
  *
  * Objetivo: que un cliente autenticado o un anónimo no pueda martillar los
  * endpoints sensibles (fuerza bruta contra el login, subida masiva de archivos,

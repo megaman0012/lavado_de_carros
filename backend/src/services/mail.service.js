@@ -1,5 +1,5 @@
 /**
- * Servicio de Email - Sistema de Lavado de Carros
+ * Servicio de Email - Total Clean Car
  * Si no hay SMTP configurado (SMTP_HOST vacío), el correo solo se registra en el log
  * en vez de fallar; así el sistema funciona en desarrollo sin credenciales reales.
  */

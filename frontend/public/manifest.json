@@ -1,13 +1,16 @@
 {
-  "short_name": "LavadoCarros",
-  "name": "Lavado de Carros",
+  "short_name": "Total Clean Car",
+  "name": "Total Clean Car",
+  "description": "Lavado de vehículos a domicilio y en estacionamientos. Reserva online.",
   "icons": [
     { "src": "icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any maskable" },
     { "src": "icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" }
   ],
   "start_url": ".",
+  "scope": ".",
   "display": "standalone",
-  "theme_color": "#0284c7",
-  "background_color": "#ffffff",
-  "description": "Lavado de autos a domicilio y en estacionamientos. Reserva online."
+  "orientation": "portrait",
+  "lang": "es",
+  "theme_color": "#3459A5",
+  "background_color": "#ffffff"
 }

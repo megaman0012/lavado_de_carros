@@ -1,5 +1,5 @@
 /**
- * Sistema de Lavado de Carros - Servidor Express
+ * Total Clean Car - Servidor Express
  * Puerto 3042
  */
 
@@ -26,8 +26,15 @@ const PORT = process.env.PORT || 3042;
 // nombre de usuario, que no se pueden falsear (ver rateLimit.middleware.js).
 app.set('trust proxy', 1);
 
-// CORS abierto (el frontend se sirve por nginx con proxy /api)
-app.use(cors({ origin: true, credentials: true }));
+// CORS: el frontend web va por nginx con proxy /api (mismo origen, no necesita
+// CORS). Quien sí lo necesita es la app Android empaquetada con Capacitor, que
+// corre en el origen https://localhost. Con CORS_ORIGINS (lista separada por
+// comas) se restringe a esos orígenes; sin definir queda abierto como antes.
+const origenesPermitidos = (process.env.CORS_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean);
+app.use(cors({
+  origin: origenesPermitidos.length > 0 ? origenesPermitidos : true,
+  credentials: true
+}));
 
 // Logging de requests
 app.use((req, res, next) => {
@@ -52,6 +59,7 @@ const reporteRoutes = require('./routes/reporte.routes');
 const planRoutes = require('./routes/plan.routes');
 const pagoRoutes = require('./routes/pago.routes');
 const recordatorioRoutes = require('./routes/recordatorio.routes');
+const catalogoRoutes = require('./routes/catalogo.routes');
 
 // Techo general de la API. Va antes de montar las rutas para cubrirlas a todas;
 // los endpoints sensibles llevan además su propio límite, más estricto.
@@ -69,6 +77,8 @@ app.use('/api/clientes', clienteRoutes);
 app.use('/api/vehiculos', vehiculoRoutes);
 app.use('/api/estacionamientos', estacionamientoRoutes);
 app.use('/api/servicios', servicioRoutes);
+app.use('/api/tipos-vehiculo', catalogoRoutes.tiposVehiculo);
+app.use('/api/adicionales', catalogoRoutes.adicionales);
 app.use('/api/lavadores', lavadorRoutes);
 app.use('/api/reportes', reporteRoutes);
 app.use('/api/planes', planRoutes);
@@ -86,7 +96,7 @@ app.get('/api/docs.json', (req, res) => res.json(swaggerSpec));
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'API Lavado de Carros funcionando', timestamp: new Date() });
+  res.json({ status: 'ok', message: 'API Total Clean Car funcionando', timestamp: new Date() });
 });
 
 // Error handlers
@@ -97,11 +107,14 @@ app.listen(PORT, '0.0.0.0', () => {
   logger.info('Server', `🚀 Servidor corriendo en http://0.0.0.0:${PORT}`);
 });
 
-// Recordatorios de reserva (WhatsApp/SMS) todos los días a las 18:00, para el día siguiente
+// Recordatorios de reserva (WhatsApp/SMS) todos los días a las 18:00, para el día siguiente.
+// La hora es la del negocio (APP_TZ): el contenedor corre en UTC y sin `timezone`
+// el envío salía a las 13:00 de Ecuador.
 const cron = require('node-cron');
 const { enviarRecordatoriosDelDia } = require('./services/recordatorio.service');
+const { APP_TZ } = require('./utils/fechas');
 cron.schedule('0 18 * * *', () => {
   enviarRecordatoriosDelDia().catch((error) => logger.error(`Recordatorios: error en el cron diario: ${error.message}`));
-});
+}, { timezone: APP_TZ });
 
 module.exports = app;

@@ -1,5 +1,5 @@
 /**
- * Controlador de Lavadores - Sistema de Lavado de Carros
+ * Controlador de Lavadores - Total Clean Car
  */
 
 const prisma = require('../db');

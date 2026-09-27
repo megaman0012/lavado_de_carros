@@ -1,4 +1,4 @@
-// Schema de Base de Datos - Sistema de Lavado de Carros
+// Schema de Base de Datos - Total Clean Car (sistema de lavado de vehículos)
 // Dominio: estacionamientos, reservas de lavado, agenda con bloqueo de franjas
 // Roles: admin | operador | lavador | cliente
 
@@ -48,13 +48,30 @@ model Vehiculo {
   marca      String?
   modelo     String?
   color      String?
-  tipo       String? // sedan | suv | camioneta | moto
+  // Define qué servicios puede contratar y a qué precio (ver PrecioServicio).
+  // Nullable solo por los vehículos anteriores al catálogo: sin tipo no se reserva.
+  id_tipo_vehiculo Int?
   estado     String  @default("activo")
 
-  cliente  Cliente   @relation(fields: [id_cliente], references: [id])
-  reservas Reserva[]
+  cliente      Cliente       @relation(fields: [id_cliente], references: [id])
+  tipoVehiculo TipoVehiculo? @relation(fields: [id_tipo_vehiculo], references: [id])
+  reservas     Reserva[]
 
   @@index([id_cliente])
+}
+
+// Catálogo de tipos de vehículo (moto, liviano, SUV...). Como las salas de un
+// cine (2D, 3D, IMAX): el mismo servicio cambia de precio y duración según el tipo.
+model TipoVehiculo {
+  id            Int     @id @default(autoincrement())
+  codigo        String  @unique // moto | liviano | suv | camioneta
+  nombre        String
+  descripcion   String?
+  orden_display Int     @default(0)
+  activo        Boolean @default(true)
+
+  vehiculos Vehiculo[]
+  precios   PrecioServicio[]
 }
 
 // ==================== SITIOS Y ESPACIOS ====================
@@ -128,17 +145,62 @@ model Plaza {
 
 // ==================== CATÁLOGO DE SERVICIOS ====================
 
+// El precio y la duración NO viven aquí sino en PrecioServicio, uno por tipo de
+// vehículo. Un servicio sin fila para un tipo no se ofrece a ese tipo.
 model TipoServicio {
   id            Int     @id @default(autoincrement())
   nombre        String
   descripcion   String?
   modalidad     String // expreso | profunda
-  duracion_min  Int     @default(60)
-  precio        Float   @default(0)
   activo        Boolean @default(true)
   orden_display Int     @default(0)
 
   reservas Reserva[]
+  precios  PrecioServicio[]
+}
+
+model PrecioServicio {
+  id               Int     @id @default(autoincrement())
+  id_tipo_servicio Int
+  id_tipo_vehiculo Int
+  precio           Float
+  duracion_min     Int
+  activo           Boolean @default(true)
+
+  tipoServicio TipoServicio @relation(fields: [id_tipo_servicio], references: [id])
+  tipoVehiculo TipoVehiculo @relation(fields: [id_tipo_vehiculo], references: [id])
+
+  @@unique([id_tipo_servicio, id_tipo_vehiculo])
+}
+
+// Extras que se suman al servicio principal (la "confitería" del cine):
+// encerado, aromatizante, limpieza de motor... Suman precio y tiempo.
+model ServicioAdicional {
+  id            Int     @id @default(autoincrement())
+  nombre        String
+  descripcion   String?
+  precio        Float
+  duracion_min  Int     @default(0) // minutos que agrega a la franja
+  activo        Boolean @default(true)
+  orden_display Int     @default(0)
+
+  reservas ReservaAdicional[]
+}
+
+// Adicionales contratados en una reserva. Nombre, precio y duración se copian
+// al reservar: cambiar el catálogo después no altera reservas ya hechas.
+model ReservaAdicional {
+  id           Int    @id @default(autoincrement())
+  id_reserva   Int
+  id_adicional Int
+  nombre       String
+  precio       Float
+  duracion_min Int
+
+  reserva   Reserva           @relation(fields: [id_reserva], references: [id])
+  adicional ServicioAdicional @relation(fields: [id_adicional], references: [id])
+
+  @@unique([id_reserva, id_adicional])
 }
 
 // ==================== PERSONAL ====================
@@ -172,6 +234,8 @@ model Reserva {
   hora_fin           String // "10:30"
   estado             String   @default("solicitada")
   observaciones      String?
+  // Total a cobrar: precio del servicio para el tipo de vehículo (0 si lo cubre
+  // un plan) + adicionales. El desglose de adicionales está en ReservaAdicional.
   precio_final       Float?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -187,6 +251,7 @@ model Reserva {
   pagos           Pago[]
   historial       HistorialReserva[]
   calificacion    Calificacion?
+  adicionales     ReservaAdicional[]
 
   @@index([fecha])
   @@index([estado])
