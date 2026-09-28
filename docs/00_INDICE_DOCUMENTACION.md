@@ -12,7 +12,7 @@ llamarse Total Clean Car; ver `14_GESTION/Historial_Versiones.md`).
 | SEGURIDAD | 🟢 COMPLETO | [05_SEGURIDAD/Analisis_Seguridad.md](05_SEGURIDAD/Analisis_Seguridad.md) |
 | BASE DE DATOS | 🟢 COMPLETO | [06_BASE_DATOS/Modelo_Datos.md](06_BASE_DATOS/Modelo_Datos.md) |
 | MANUAL USUARIO | 🟢 COMPLETO · v2.0 2026-09-27 | [07_MANUAL_USUARIO/Manual_Usuario.md](07_MANUAL_USUARIO/Manual_Usuario.md) |
-| MANUAL ADMINISTRADOR | 🟢 COMPLETO | [08_MANUAL_ADMINISTRADOR/Manual_Administrador.md](08_MANUAL_ADMINISTRADOR/Manual_Administrador.md) |
+| MANUAL ADMINISTRADOR | 🟢 COMPLETO · v2.0 2026-09-27 | [08_MANUAL_ADMINISTRADOR/Manual_Administrador.md](08_MANUAL_ADMINISTRADOR/Manual_Administrador.md) |
 | MANUAL SOPORTE | 🟢 COMPLETO | [09_MANUAL_SOPORTE/Manual_Soporte.md](09_MANUAL_SOPORTE/Manual_Soporte.md) |
 | MOBILE | 🟡 EN PRUEBA · 2026-09-27 | [15_APK/Preparacion_APK.md](15_APK/Preparacion_APK.md) — APK Android de prueba, sin publicar |
 | OPERACION | 🟢 COMPLETO | [11_OPERACION/Operacion.md](11_OPERACION/Operacion.md) |

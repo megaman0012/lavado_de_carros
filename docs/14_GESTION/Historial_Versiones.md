@@ -6,6 +6,7 @@
 |---|---|---|---|
 | 1.0 | 2026-09-15 | Auditoria tecnica y documentacion completa. Se conserva toda la documentacion previa sin modificar. | Auditoria tecnica |
 | 2.0 | 2026-09-27 | `07_MANUAL_USUARIO` reescrito para Total Clean Car: roles, reserva en seis pasos, precios por tipo de vehiculo, adicionales, app Android; 13 capturas nuevas (solo datos de demostracion). Nuevo `15_APK/Preparacion_APK.md`. Copia editable en linea enlazada desde el manual. | Desarrollo |
+| 2.1 | 2026-09-27 | `08_MANUAL_ADMINISTRADOR` v2.0: precios por tipo de vehiculo, adicionales, reglas de cupos, zona horaria, parametros `APP_TZ` y `CORS_ORIGINS`, procedimiento de despliegue y migraciones, APK y respaldo. Corrige tres rutas de API de la v1.0 que no existian (reinicio de credenciales, acta, asignar lavador). | Desarrollo |
 
 ## Aplicacion
 
