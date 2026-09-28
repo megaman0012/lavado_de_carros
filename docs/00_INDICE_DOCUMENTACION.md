@@ -1,6 +1,7 @@
-# Indice de documentacion — LavadoCarros
+# Indice de documentacion — Total Clean Car
 
-Auditoria del **2026-09-15**.
+Auditoria del **2026-09-15**. Actualizado el **2026-09-27** (el producto pasa a
+llamarse Total Clean Car; ver `14_GESTION/Historial_Versiones.md`).
 
 | Area | Estado | Documento |
 |---|---|---|
@@ -10,10 +11,10 @@ Auditoria del **2026-09-15**.
 | DOCKER | 🟢 COMPLETO | [04_DOCKER/Docker.md](04_DOCKER/Docker.md) |
 | SEGURIDAD | 🟢 COMPLETO | [05_SEGURIDAD/Analisis_Seguridad.md](05_SEGURIDAD/Analisis_Seguridad.md) |
 | BASE DE DATOS | 🟢 COMPLETO | [06_BASE_DATOS/Modelo_Datos.md](06_BASE_DATOS/Modelo_Datos.md) |
-| MANUAL USUARIO | 🟢 COMPLETO | [07_MANUAL_USUARIO/Manual_Usuario.md](07_MANUAL_USUARIO/Manual_Usuario.md) |
+| MANUAL USUARIO | 🟢 COMPLETO · v2.0 2026-09-27 | [07_MANUAL_USUARIO/Manual_Usuario.md](07_MANUAL_USUARIO/Manual_Usuario.md) |
 | MANUAL ADMINISTRADOR | 🟢 COMPLETO | [08_MANUAL_ADMINISTRADOR/Manual_Administrador.md](08_MANUAL_ADMINISTRADOR/Manual_Administrador.md) |
 | MANUAL SOPORTE | 🟢 COMPLETO | [09_MANUAL_SOPORTE/Manual_Soporte.md](09_MANUAL_SOPORTE/Manual_Soporte.md) |
-| MOBILE | ⚪ N/A | No existe aplicacion movil |
+| MOBILE | 🟡 EN PRUEBA · 2026-09-27 | [15_APK/Preparacion_APK.md](15_APK/Preparacion_APK.md) — APK Android de prueba, sin publicar |
 | OPERACION | 🟢 COMPLETO | [11_OPERACION/Operacion.md](11_OPERACION/Operacion.md) |
 | CONTINUIDAD | 🟢 COMPLETO | [12_CONTINUIDAD/Backup_Recuperacion.md](12_CONTINUIDAD/Backup_Recuperacion.md) |
 | PRUEBAS | 🟢 COMPLETO | [13_PRUEBAS/Plan_Pruebas.md](13_PRUEBAS/Plan_Pruebas.md) |
