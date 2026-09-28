@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Usuario } from '../types';
+import { esAppNativa } from '../services/config';
 
 interface AuthContextType {
   usuario: Usuario | null;
@@ -12,9 +13,16 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Pantalla de inicio de cada rol (a donde lleva el login o el logo)
-export const rutaInicio = (rol?: string) =>
-  rol === 'cliente' ? '/mis-reservas' : rol === 'lavador' ? '/mis-trabajos' : '/dashboard';
+// Pantalla de inicio de cada rol (a donde lleva el login o el logo).
+// Admin y operador usan el panel completo en la APK y en el celular, pero ahí
+// arrancan en la Agenda, lo que se consulta en la calle; el Dashboard, con
+// gráficos y KPIs, queda como inicio en la computadora.
+export const rutaInicio = (rol?: string) => {
+  if (rol === 'cliente') return '/mis-reservas';
+  if (rol === 'lavador') return '/mis-trabajos';
+  const celular = esAppNativa() || window.matchMedia('(max-width: 767px)').matches;
+  return celular ? '/agenda' : '/dashboard';
+};
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [usuario, setUsuario] = useState<Usuario | null>(null);

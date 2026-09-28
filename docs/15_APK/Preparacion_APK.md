@@ -23,6 +23,22 @@ el servidor publicado con **dominio y HTTPS**.
 | Descarga de PDF/Excel dentro de la app | ⚠️ Necesita un plugin al compilar |
 | Respaldo de la base (CONT-01 de la auditoría) | ❌ Recomendado antes de abrir a clientes |
 
+## Roles en la APK (decidido el 2026-09-27)
+
+**Una sola APK para todos los roles.** Es la misma app web: cada usuario ve las
+pantallas de su rol al iniciar sesión.
+
+| Rol | Uso principal en la APK |
+|---|---|
+| Cliente | Reservar, seguir sus reservas, subir el comprobante y calificar |
+| Lavador | Mis trabajos: iniciar, completar y subir fotos con la cámara |
+| Operador / Admin | Consulta rápida del panel. **Arranca en la Agenda**, no en el Dashboard |
+
+El trabajo diario de operador y admin (tablas, reportes, Excel) sigue en la web,
+en computadora. La pantalla de inicio la decide `rutaInicio()` en
+`context/AuthContext.tsx`: en la APK o en una pantalla de menos de 768 px lleva a
+`/agenda`, y en computadora a `/dashboard`.
+
 ## Enfoque recomendado: Capacitor
 
 Capacitor mete el build de React (`frontend/build`) dentro de una app Android. La
