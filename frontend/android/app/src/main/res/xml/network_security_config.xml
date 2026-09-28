@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Total Clean Car: el servidor todavía no tiene HTTPS. Se permite HTTP sin cifrar
+  SOLO hacia el servidor de la app (IP pública) y la app local (localhost); todo
+  lo demás sigue exigiendo HTTPS. Al publicar con dominio y certificado, borrar
+  los domain-config y dejar solo el base-config.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">181.188.232.50</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

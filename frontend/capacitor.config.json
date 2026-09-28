@@ -3,7 +3,8 @@
   "appName": "Total Clean Car",
   "webDir": "build",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "http",
+    "cleartext": true
   },
   "android": {
     "allowMixedContent": false

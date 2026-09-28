@@ -23,6 +23,39 @@ el servidor publicado con **dominio y HTTPS**.
 | Descarga de PDF/Excel dentro de la app | ⚠️ Necesita un plugin al compilar |
 | Respaldo de la base (CONT-01 de la auditoría) | ❌ Recomendado antes de abrir a clientes |
 
+## Estado: APK de prueba compilada (2026-09-27)
+
+`/home/server-dt/apk/TotalCleanCar-1.0-prueba.apk` (6,9 MB, `versionName 1.0`).
+
+- **Firmada con la clave de depuración de Android**: se instala a mano, pero **no
+  sirve para Google Play**. Para publicar hace falta un keystore propio (ver abajo).
+- **Servidor: `http://181.188.232.50:3041`, sin cifrar**, por decisión del usuario
+  mientras no haya dominio. Contraseñas y comprobantes viajan en claro por internet.
+- El HTTP sin cifrar se permite **solo** hacia esa IP y `localhost`
+  (`android/app/src/main/res/xml/network_security_config.xml`); el resto exige HTTPS.
+- La app carga en `http://localhost` (`androidScheme: "http"`). Con `https`,
+  Android bloquearía las llamadas http:// a la API como contenido mixto.
+- Ya resueltos en esta versión: botón atrás de Android (`src/index.tsx`) y
+  descargas de PDF/Excel con el menú de compartir (`services/descargas.ts`).
+
+**Al pasar a HTTPS con dominio:** cambiar `REACT_APP_SERVIDOR`, volver
+`androidScheme` a `"https"`, quitar los `domain-config` del
+`network_security_config.xml` y agregar el dominio a `CORS_ORIGINS`. Cambiar el
+esquema cambia el origen de la app: los usuarios tendrán que iniciar sesión otra vez.
+
+### Recompilar
+
+    cd frontend
+    sudo -u server-dt -H env REACT_APP_SERVIDOR=http://181.188.232.50:3041 CI=false npm run build
+    sudo -u server-dt -H npx cap sync android
+    cd android
+    sudo -u server-dt -H env JAVA_HOME=/usr/lib/jvm/java-21-openjdk \
+      ANDROID_HOME=/home/server-dt/android-sdk ./gradlew assembleDebug
+    # -> android/app/build/outputs/apk/debug/app-debug.apk
+
+La URL va en la línea de comandos, **no** en un `.env.production.local`: el build
+web del Dockerfile la heredaría y la página web llamaría a la IP en vez de a `/api`.
+
 ## Roles en la APK (decidido el 2026-09-27)
 
 **Una sola APK para todos los roles.** Es la misma app web: cada usuario ve las

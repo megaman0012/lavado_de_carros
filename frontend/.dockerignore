@@ -1,4 +1,9 @@
+# El Dockerfile instala sus propias dependencias (Alpine) y compila adentro:
+# no copiar las del host ni los artefactos de la APK.
 node_modules
 build
 .env
+.env*.local
 *.log
+android
+resources
