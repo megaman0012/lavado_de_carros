@@ -69,6 +69,62 @@ const calcularKPIs = async () => {
   };
 };
 
+/**
+ * Totales de un período elegido por el usuario (el mes que selecciona en
+ * Reportes). Es distinto de calcularKPIs(), que siempre mira "hoy / esta semana
+ * / este mes" y alimenta el Dashboard: ahí la pregunta es "¿cómo vamos ahora?",
+ * acá es "¿cómo nos fue en septiembre?".
+ *
+ * Se devuelven FACTURADO y COBRADO por separado, que no son lo mismo y
+ * confundirlos es el error clásico de un reporte de ingresos:
+ *   - facturado: lo que suman las reservas del período (precio_final)
+ *   - cobrado:   los pagos aprobados con fecha de pago dentro del período
+ * Un lavado de fin de mes cobrado al mes siguiente cae en meses distintos, y
+ * esa diferencia es justamente lo que hay que poder ver.
+ */
+const calcularResumenPeriodo = async (desde, hasta) => {
+  const enRango = { fecha: { gte: desde, lte: hasta } };
+
+  const [hechas, canceladas, noAsistio, cobrado, calificaciones] = await Promise.all([
+    prisma.reserva.aggregate({
+      where: { ...enRango, estado: { notIn: ['cancelada', 'no_asistio'] } },
+      _count: true,
+      _sum: { precio_final: true }
+    }),
+    prisma.reserva.count({ where: { ...enRango, estado: 'cancelada' } }),
+    prisma.reserva.count({ where: { ...enRango, estado: 'no_asistio' } }),
+    prisma.pago.aggregate({
+      where: { estado: 'aprobado', fecha_pago: { gte: desde, lte: hasta } },
+      _sum: { monto: true }
+    }),
+    prisma.calificacion.aggregate({
+      where: { reserva: { is: enRango } },
+      _avg: { puntuacion: true },
+      _count: true
+    })
+  ]);
+
+  const lavados = hechas._count || 0;
+  const facturado = hechas._sum.precio_final || 0;
+
+  return {
+    desde: fechas.aISO(desde),
+    hasta: fechas.aISO(hasta),
+    lavados,
+    facturado,
+    cobrado: cobrado._sum.monto || 0,
+    // Sin lavados el promedio no es 0, es "no aplica": dividir por cero daría NaN
+    // y mostrar "$0.00" haría pensar que se trabajó gratis.
+    ticket_promedio: lavados > 0 ? Math.round((facturado / lavados) * 100) / 100 : null,
+    canceladas,
+    no_asistio: noAsistio,
+    calificacion_promedio: calificaciones._avg.puntuacion
+      ? Math.round(calificaciones._avg.puntuacion * 10) / 10
+      : null,
+    calificaciones_total: calificaciones._count
+  };
+};
+
 const calcularPorServicio = async (desde, hasta) => {
   const datos = await prisma.reserva.groupBy({
     by: ['id_tipo_servicio'],
@@ -129,6 +185,17 @@ const kpis = async (req, res) => {
   } catch (error) {
     console.error('Error calculando KPIs:', error);
     res.status(500).json({ success: false, message: 'Error al calcular KPIs' });
+  }
+};
+
+// GET /api/reportes/resumen?desde=&hasta=  — totales del período elegido
+const resumenPeriodo = async (req, res) => {
+  try {
+    const { desde, hasta } = rangoQuery(req);
+    res.json({ success: true, data: await calcularResumenPeriodo(desde, hasta) });
+  } catch (error) {
+    console.error('Error calculando el resumen del período:', error);
+    res.status(500).json({ success: false, message: 'Error al calcular el resumen' });
   }
 };
 
@@ -620,4 +687,13 @@ const actaServicio = async (req, res) => {
   }
 };
 
-module.exports = { kpis, porServicio, porEstacionamiento, ingresos, exportarExcel, exportarPDF, actaServicio };
+module.exports = {
+  kpis,
+  resumenPeriodo,
+  porServicio,
+  porEstacionamiento,
+  ingresos,
+  exportarExcel,
+  exportarPDF,
+  actaServicio
+};

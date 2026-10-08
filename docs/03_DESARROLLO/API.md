@@ -92,9 +92,11 @@ Los que conviene conocer aunque Swagger los detalle:
 | `POST /api/pagos/:id/pagos/comprobante` | el cliente sube el comprobante |
 | `POST /api/pagos/:id/pagos/tarjeta` | pago con tarjeta |
 | `POST /api/pagos/webhook` | **recibe notificaciones externas** — ver advertencia |
-| `GET /api/reportes/kpis` | indicadores del panel |
-| `GET /api/reportes/exportar/excel` | exportacion a Excel |
-| `GET /api/reportes/exportar/pdf` | exportacion a PDF |
+| `GET /api/reportes/kpis` | indicadores **en vivo** del Dashboard: hoy, esta semana, este mes. No acepta rango |
+| `GET /api/reportes/resumen?desde=&hasta=` | totales del **período elegido** en Reportes. Devuelve `facturado` (lo que suman los lavados) y `cobrado` (pagos aprobados dentro del período) por separado: no son lo mismo y confundirlos descuadra la caja |
+| `GET /api/reportes/por-servicio`, `/por-estacionamiento`, `/ingresos` | aceptan `desde` y `hasta` (`YYYY-MM-DD`); sin ellos devuelven el histórico |
+| `GET /api/reportes/exportar/excel` | exportacion a Excel; respeta `desde`/`hasta` |
+| `GET /api/reportes/exportar/pdf` | exportacion a PDF; respeta `desde`/`hasta` |
 | `GET /api/reservas/reserva/:id/acta.pdf` | acta del servicio en PDF |
 | `POST /api/clientes/:id/usuario/reset` | reinicio de credenciales del cliente |
 

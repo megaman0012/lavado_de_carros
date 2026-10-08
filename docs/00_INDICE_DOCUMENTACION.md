@@ -17,8 +17,8 @@ automatizadas, helmet y refresh token, CI en GitHub Actions; ver
 | MANUAL SOPORTE | 🟢 COMPLETO | [09_MANUAL_SOPORTE/Manual_Soporte.md](09_MANUAL_SOPORTE/Manual_Soporte.md) |
 | MOBILE | 🟡 EN PRUEBA · 2026-09-27 | [15_APK/Preparacion_APK.md](15_APK/Preparacion_APK.md) — APK Android de prueba, sin publicar |
 | OPERACION | 🟢 COMPLETO | [11_OPERACION/Operacion.md](11_OPERACION/Operacion.md) |
-| CONTINUIDAD | 🟢 COMPLETO | [12_CONTINUIDAD/Backup_Recuperacion.md](12_CONTINUIDAD/Backup_Recuperacion.md) |
-| PRUEBAS | 🟢 COMPLETO · v2.0 2026-10-08 | [13_PRUEBAS/Plan_Pruebas.md](13_PRUEBAS/Plan_Pruebas.md) — 184 pruebas automatizadas |
+| CONTINUIDAD | 🟢 COMPLETO · v2.0 2026-10-08 | [12_CONTINUIDAD/Backup_Recuperacion.md](12_CONTINUIDAD/Backup_Recuperacion.md) — respaldo diario automático |
+| PRUEBAS | 🟢 COMPLETO · v2.1 2026-10-08 | [13_PRUEBAS/Plan_Pruebas.md](13_PRUEBAS/Plan_Pruebas.md) — 203 pruebas automatizadas |
 | CI / CD | 🟢 COMPLETO · 2026-10-08 | [16_CI_CD/CI_CD.md](16_CI_CD/CI_CD.md) |
 | GESTION | 🟢 COMPLETO | [14_GESTION/Historial_Versiones.md](14_GESTION/Historial_Versiones.md) |
 

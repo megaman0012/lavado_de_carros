@@ -55,3 +55,47 @@ export const partesDia = (valor: string) => {
     mes: d.toLocaleDateString('es-EC', { month: 'short' }).replace('.', '')
   };
 };
+
+// ---------------------------------------------------------------------------
+// Meses — para el filtro de Reportes
+// ---------------------------------------------------------------------------
+// El valor que maneja <input type="month"> es "YYYY-MM". Todo lo de abajo trabaja
+// con texto a propósito: construir un Date para después volver a formatearlo es
+// justo por donde se cuela el corrimiento de un día.
+
+/** Mes en curso, "YYYY-MM". */
+export const mesActual = (): string => hoyISO().slice(0, 7);
+
+/** Mueve n meses (puede ser negativo): desplazarMes('2026-01', -1) -> '2025-12'. */
+export const desplazarMes = (mes: string, n: number): string => {
+  const [a, m] = mes.split('-').map(Number);
+  const total = a * 12 + (m - 1) + n;
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`;
+};
+
+/** Primer y último día del mes, "YYYY-MM-DD", para mandar como desde/hasta. */
+export const rangoMes = (mes: string): { desde: string; hasta: string } => {
+  const [a, m] = mes.split('-').map(Number);
+  // Día 0 del mes siguiente = último del actual; resuelve febrero y los bisiestos
+  const ultimo = new Date(a, m, 0).getDate();
+  return { desde: `${mes}-01`, hasta: `${mes}-${String(ultimo).padStart(2, '0')}` };
+};
+
+/** "septiembre de 2026", con mayúscula inicial. */
+export const nombreMes = (mes: string): string => {
+  const [a, m] = mes.split('-').map(Number);
+  const texto = new Date(a, m - 1, 1).toLocaleDateString('es-EC', { month: 'long', year: 'numeric' });
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+};
+
+/** Rango de los últimos n días terminando hoy, para las gráficas del Dashboard. */
+export const ultimosDias = (n: number): { desde: string; hasta: string } => {
+  const hasta = hoyISO();
+  const [a, m, d] = hasta.split('-').map(Number);
+  const inicio = new Date(a, m - 1, d - (n - 1));
+  const pad = (x: number) => String(x).padStart(2, '0');
+  return {
+    desde: `${inicio.getFullYear()}-${pad(inicio.getMonth() + 1)}-${pad(inicio.getDate())}`,
+    hasta
+  };
+};

@@ -7,6 +7,7 @@
 | 1.0 | 2026-09-15 | Auditoria tecnica y documentacion completa. Se conserva toda la documentacion previa sin modificar. | Auditoria tecnica |
 | 2.0 | 2026-09-27 | `07_MANUAL_USUARIO` reescrito para Total Clean Car: roles, reserva en seis pasos, precios por tipo de vehiculo, adicionales, app Android; 13 capturas nuevas (solo datos de demostracion). Nuevo `15_APK/Preparacion_APK.md`. Copia editable en linea enlazada desde el manual. | Desarrollo |
 | 2.1 | 2026-09-27 | `08_MANUAL_ADMINISTRADOR` v2.0: precios por tipo de vehiculo, adicionales, reglas de cupos, zona horaria, parametros `APP_TZ` y `CORS_ORIGINS`, procedimiento de despliegue y migraciones, APK y respaldo. Corrige tres rutas de API de la v1.0 que no existian (reinicio de credenciales, acta, asignar lavador). | Desarrollo |
+| 3.1 | 2026-10-08 | `12_CONTINUIDAD` v2.0: el respaldo pasa de 🔴 inexistente a diario automático, con prueba de restauracion ejecutada (cierra T-50 y T-51). `08_MANUAL_ADMINISTRADOR` secciones 9 (Dashboard vs Reportes) y 13 (respaldos) reescritas. `07_MANUAL_USUARIO` 6.1 ampliada y 6.6 Reportes, nueva. `13_PRUEBAS` v2.1 (203 casos). | Desarrollo |
 | 3.0 | 2026-10-08 | Cierre de los items #14, #15 y #16 del plan de trabajo. Nuevo `16_CI_CD/CI_CD.md`. `13_PRUEBAS` v2.0 (suite automatizada de 184 casos). `05_SEGURIDAD`: SEC-05 y SEC-06 cerrados, SEC-11 agregado y cerrado. `08_MANUAL_ADMINISTRADOR` v2.1 (vehiculos por cliente, como funciona la sesion, despliegue con script). `03_DESARROLLO/API.md` y `06_BASE_DATOS` al dia. | Desarrollo |
 
 ## Aplicacion
@@ -15,7 +16,8 @@ Sin etiquetas de version en git. Reconstruido desde el historial de commits:
 
 | Fecha | Commit | Cambio |
 |---|---|---|
-| 2026-10-08 | pendiente | **Pruebas, seguridad de sesion y CI:** 184 pruebas automatizadas, `helmet`, refresh token revocable, GitHub Actions, script de despliegue y vehiculos por cliente en el panel (ver `CHANGELOG.md`) |
+| 2026-10-08 | pendiente | **Respaldos automaticos y reportes por mes:** respaldo diario con verificacion y retencion 30+12, Dashboard con graficas, filtro por mes en Reportes (ver `CHANGELOG.md`) |
+| 2026-10-08 | `8590daa` | **Pruebas, seguridad de sesion y CI:** 184 pruebas automatizadas, `helmet`, refresh token revocable, GitHub Actions, script de despliegue y vehiculos por cliente en el panel (ver `CHANGELOG.md`) |
 | 2026-09-27 | `86d2182` | Manual de administrador 2.0 |
 | 2026-09-27 | `9fc57ab` | Manual de usuario 2.0 |
 | 2026-09-27 | `bf04ce3` | APK Android de prueba con Capacitor 8 |

@@ -53,7 +53,7 @@
 | 14 | **Tests backend** (Jest + supertest: reservas, agenda, anti doble-reserva) | La lógica de solapamiento es crítica; un regression ahí cuesta clientes | M | ✅ 2026-10-08 |
 | 15 | **Seguridad dura**: rate limiting, helmet, refresh token, expiración JWT | Recomendable antes de exponer a internet público | S-M | ✅ 2026-10-08 (rate limiting 2026-08-31) |
 | 16 | **CI/CD** (build + tests automáticos) | Cuando haya tests (ítem 14) | M | ✅ 2026-10-08 (CI completo; el despliegue es un script, no automático) |
-| 17 | **Backups automáticos de Postgres** | Los datos de clientes/pagos son críticos | S | ☐ **el único que queda** |
+| 17 | **Backups automáticos de Postgres** | Los datos de clientes/pagos son críticos | S | ✅ 2026-10-08 (falta copia fuera del servidor) |
 
 ---
 
@@ -106,11 +106,16 @@ Surge del análisis del usuario sobre huecos encontrados usando el panel. Todos 
 - **Servicios y clientes no se borran**: se desactivan/suspenden. Sus reservas históricas los referencian y borrarlos rompería el histórico y los reportes.
 - **Sin pantalla de "usuarios"**: para 3-5 personas, las credenciales del lavador se gestionan dentro de su ficha.
 
-### Lo que sigue abierto (P3)
-- **#17 Backups de Postgres** — el único que queda. Se vuelve más importante con
-  cada vuelta: el volumen `uploads_data` guarda comprobantes de pago, no solo
-  fotos, y ahora que el despliegue es un script conviene poder volver atrás.
-- #14, #15 y #16 quedaron cerrados el 2026-10-08 (ver el sprint F).
+### P3 cerrado
+Los cuatro ítems técnicos (#14 pruebas, #15 seguridad, #16 CI/CD, #17 respaldos)
+quedaron cerrados el 2026-10-08. Ver los sprints F y G.
+
+**Lo que queda de ellos, como riesgo y no como tarea pendiente:**
+- El respaldo vive en el mismo servidor (`DESTINO_EXTERNO` vacío): no cubre
+  perder el servidor. Hace falta un destino —otro equipo, un NAS, un disco— al
+  cual copiarlo.
+- El repositorio es público y tiene la contraseña de PostgreSQL en el historial
+  desde el commit inicial. Rotarla es lo único que lo cierra.
 
 ---
 
@@ -138,7 +143,7 @@ pedida por el usuario.
   dueño) quedó descartada por ahora; si el volumen la pide, es un agregado
   pequeño sobre `GET /api/vehiculos`, que ya acepta filtros.
 
-### Decisiones tomadas en la implementación
+### Decisiones tomadas en la implementación (Sprint F)
 - **El refresh token vive en `localStorage`, no en una cookie `httpOnly`.** La
   APK de Capacitor corre en el origen `https://localhost` y hablaría con el
   servidor como un tercero, donde una cookie `SameSite=None; Secure` sobre un
@@ -153,3 +158,32 @@ pedida por el usuario.
   con archivos reales). El webhook de pagos tampoco se probó: SEC-02 sigue
   abierto porque no hay pasarela conectada, y probarlo sin arreglarlo solo
   documentaría el agujero.
+
+
+---
+
+## Sprint G — Respaldos y separación Dashboard / Reportes (2026-10-08) ✅ COMPLETO
+
+| # | Ítem | Esfuerzo | Estado |
+|---|------|----------|--------|
+| G1 | **#17** — respaldo automático diario, con verificación y retención 30+12 | M | ✅ |
+| G2 | Prueba de restauración real contra una base desechable (cierra T-50 y T-51) | S | ✅ |
+| G3 | El Dashboard deja de ser un subconjunto de Reportes: pasa a tener las gráficas | S | ✅ |
+| G4 | Filtro por mes en Reportes, que alcanza también a las exportaciones | M | ✅ |
+| G5 | Gráfica de lavados por estacionamiento (el endpoint existía sin usarse) | S | ✅ |
+
+### Decisiones tomadas en la implementación
+- **Las fotos no van dentro del paquete de respaldo.** Hoy pesan menos de 1 MB,
+  pero cada lavado suma hasta 6 y en un año serían gigas, multiplicadas por 30
+  días de retención. Van a un espejo incremental que **nunca borra**: si alguien
+  elimina evidencia del servidor, el espejo la conserva.
+- **El despliegue sigue sin automatizarse desde GitHub**, pero ahora el motivo
+  que lo bloqueaba —no poder volver atrás— está resuelto. Falta solo decidir
+  entre runner autoalojado y SSH (ver `docs/16_CI_CD/CI_CD.md`).
+- **Todas las gráficas usan un solo tono.** Son de una sola serie: comparan
+  magnitudes o muestran una evolución. Una paleta de colores distintos es para
+  distinguir series entre sí, y acá no hay ninguna que distinguir; pintar cada
+  barra de un color codificaría dos veces lo mismo.
+- **No se verificó el aspecto de las gráficas en un navegador**: no hay navegador
+  headless en el servidor. Se comprobó el build, los tipos y el contrato de datos
+  con pruebas; el aspecto hay que mirarlo una vez desplegado.

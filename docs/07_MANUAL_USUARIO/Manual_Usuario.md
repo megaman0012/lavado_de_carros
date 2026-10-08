@@ -195,8 +195,25 @@ los pagos. Todo se hace desde el menú de la izquierda (☰ en el celular).
 
 ### 6.1 Dashboard
 
-Resumen del negocio: lavados de hoy, la semana y el mes, ingresos del mes,
-ocupación de hoy, calificación promedio y solicitudes pendientes de confirmar.
+Cómo va el negocio **ahora**. Se abre y se lee: no hay nada que configurar.
+
+Arriba, cinco tarjetas: lavados de hoy, lavados del mes (con los de la semana
+debajo), cobrado del mes, ocupación de hoy y calificación promedio.
+
+Si hay solicitudes sin confirmar aparece un aviso ámbar; al hacerle clic se abre
+Reservas ya filtrada por esas solicitudes.
+
+Abajo, dos gráficas de los **últimos 30 días**:
+
+- **Ingresos por día** — cuánto se facturó cada día.
+- **Lavados por servicio** — cuáles se piden más. Debajo, la misma información en
+  una tabla con los números exactos.
+
+Las dos cubren el mismo período, así que se pueden leer juntas: cuánto entró y de
+qué servicios vino.
+
+> Para mirar un mes anterior, comparar o exportar, eso está en **Reportes**
+> (sección 6.6). El Dashboard siempre muestra el presente.
 
 ### 6.2 Agenda
 
@@ -246,6 +263,35 @@ que se aprueba.
 ![Figura 12](img/fig12-pagos-por-verificar.png)
 
 **Figura 12 — Pagos por verificar.**
+
+### 6.6 Reportes
+
+Lo que el Dashboard no hace: **mirar un mes a elegir**.
+
+Arriba de todo está el selector. Las flechas `‹` y `›` se mueven de a un mes; el
+campo de mes salta a uno lejano. No se puede elegir un mes que todavía no pasó, y
+el mes en curso llega hasta hoy. Todo lo de abajo —tarjetas, gráficas y lo que se
+exporta— cambia con el mes elegido.
+
+**Las tarjetas del mes:** lavados, facturado, cobrado, ticket promedio,
+cancelados y calificación.
+
+**Facturado y cobrado casi nunca son iguales, y está bien:**
+
+- **Facturado** es lo que suman los lavados **hechos** en el mes.
+- **Cobrado** son los **pagos aprobados** con fecha dentro del mes.
+
+Un lavado del 28 de septiembre que el cliente pagó el 2 de octubre factura en
+septiembre y cobra en octubre. Cuando los dos números difieren, la pantalla lo
+explica abajo de las tarjetas.
+
+**Las gráficas:** ingresos por día del mes, lavados por servicio y lavados por
+estacionamiento. Cada una tiene debajo una tabla con los nombres completos y los
+números exactos — útil cuando un nombre es largo y en la gráfica aparece cortado.
+
+**Exportar.** Los botones **Excel** y **PDF** de arriba a la derecha generan el
+archivo **del mes que está en pantalla**, no de todo el historial. El nombre del
+archivo lleva el mes (`total-clean-car-2026-09.xlsx`).
 
 ## 7. Administrador: catálogo y configuración
 

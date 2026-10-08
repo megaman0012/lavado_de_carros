@@ -13,6 +13,7 @@ import Clientes from './pages/Clientes';
 import Estacionamientos from './pages/Estacionamientos';
 import Servicios from './pages/Servicios';
 import Lavadores from './pages/Lavadores';
+import Dashboard from './pages/Dashboard';
 import Reportes from './pages/Reportes';
 import MisTrabajos from './pages/MisTrabajos';
 import Planes from './pages/Planes';
@@ -55,7 +56,7 @@ const App: React.FC = () => {
           } />
           <Route path="/dashboard" element={
             <ProtectedRoute roles={['admin', 'operador']}>
-              <Layout><Reportes resumen /></Layout>
+              <Layout><Dashboard /></Layout>
             </ProtectedRoute>
           } />
           <Route path="/clientes" element={

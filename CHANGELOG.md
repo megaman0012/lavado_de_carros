@@ -2,7 +2,63 @@
 
 ## [Sin publicar]
 
-### 2026-10-08 — Pruebas, seguridad de sesión y CI (pendiente de desplegar)
+### 2026-10-08 (2) — Respaldos, Dashboard con gráficas y reportes por mes (pendiente de desplegar)
+
+Cierra el ítem **#17 (respaldos automáticos)** —el último de P3— y separa el
+Dashboard de Reportes, que mostraban casi lo mismo.
+
+#### Agregado
+- **Respaldo automático diario** (`scripts/respaldo.sh`, cron a las 03:30).
+  Guarda la base (`pg_dump -Fc`), el `.env`, la configuración y a qué commit
+  correspondían los datos. Retención: 30 diarios + 12 mensuales.
+  - **Verificación en cada corrida:** después del dump recorre su índice con
+    `pg_restore --list`. Un archivo truncado falla ahí y no el día que haga falta.
+  - `--solo-verificar` dice cuántos respaldos hay y cuántos días tiene el más
+    reciente: si pasan más de dos, avisa que el cron dejó de correr.
+  - **Probado restaurando** el 2026-10-08: las 11 tablas coincidieron exactamente.
+    Cierra los casos T-50 y T-51 del plan de pruebas.
+- **Filtro por mes en Reportes.** El selector manda sobre todo: tarjetas,
+  gráficas y las exportaciones a Excel y PDF, que ahora cubren el mes en pantalla
+  y no el histórico completo. Antes no había forma de responder "cuánto
+  facturamos en septiembre".
+- `GET /api/reportes/resumen?desde=&hasta=`, con **facturado y cobrado por
+  separado**: lo que suman los lavados del período no es lo que se cobró dentro
+  de él, y confundirlos descuadra la caja.
+- Gráfica de **lavados por estacionamiento** en Reportes: el endpoint existía
+  desde siempre y no se mostraba en ninguna pantalla.
+- 19 pruebas del filtro por mes (203 en total).
+
+#### Cambiado
+- **El Dashboard ahora tiene las gráficas.** Era la pantalla de Reportes sin
+  ellas, o sea un subconjunto: dos entradas del menú para casi lo mismo. Ahora
+  el Dashboard responde "¿cómo vamos ahora?" (hoy, la semana, el mes, y los
+  últimos 30 días en gráficas) y Reportes, "¿cómo nos fue en este mes?".
+- El aviso de solicitudes pendientes **lleva a Reservas ya filtrado**; antes era
+  un cartel que no se podía accionar.
+- Las gráficas se rehicieron sobre una paleta verificada: un solo tono —el azul
+  del logo, #2E96D4— porque todas son de una sola serie; colores distintos son
+  para distinguir series, y acá no hay ninguna que distinguir. La evolución de
+  ingresos pasó de barras a una línea con área, que es la forma correcta para
+  una serie en el tiempo. Rejilla fina y continua (antes era punteada), barras de
+  24 px como máximo y nombres largos acortados, con el nombre completo y el
+  número exacto en una tabla debajo de cada gráfica.
+- `scripts/respaldo.sh` y `scripts/desplegar.sh` leen el `.env` sin `source`: ese
+  archivo admite valores que para bash son sintaxis (`SMTP_FROM=... <correo>`).
+
+#### Corregido
+- `scripts/desplegar.sh` fallaba con *"error sintáctico cerca del elemento
+  inesperado `newline`"* por hacer `source .env`.
+
+#### Sigue abierto
+- El respaldo vive en el **mismo servidor** que el sistema (`DESTINO_EXTERNO`
+  vacío): cubre el borrado accidental y el error de migración, no la pérdida del
+  servidor.
+- El repositorio de GitHub es **público** y tiene la contraseña real de PostgreSQL
+  desde el commit inicial (`.env.example` y `src/config/index.js`). Rotarla es lo
+  único que lo cierra: borrar las líneas no la saca del historial.
+- SEC-01 a SEC-04 y SEC-10 del análisis de seguridad.
+
+### 2026-10-08 (1) — Pruebas, seguridad de sesión y CI (desplegado)
 
 Cierra los ítems **#14 (tests backend)**, **#15 (seguridad dura)** y **#16
 (CI/CD)** del `PLAN_TRABAJO.md`, y agrega la vista de vehículos por cliente en
@@ -62,8 +118,6 @@ el panel.
   sesión una vez y queda con el flujo nuevo.
 
 #### Sigue abierto
-- #17 Respaldos automáticos de Postgres — el único ítem de P3 que queda, y el
-  más importante antes de automatizar el despliegue.
 - SEC-01 a SEC-04 y SEC-10 del análisis de seguridad (exposición de red, webhook
   de pagos sin firma, HTTPS).
 

@@ -1,6 +1,6 @@
 # ARQUITECTURA - Sistema de Lavado de Carros
 
-**Fecha:** 2026-08-21 · actualizado 2026-10-08 (pruebas, helmet, refresh token, CI)
+**Fecha:** 2026-08-21 · actualizado 2026-10-08 (pruebas, helmet, refresh token, CI, respaldos)
 **Base:** arquitectura del proyecto `coordinador-tecnico-mvp02` (dockerización probada, ver BITACORA de ese proyecto)
 
 ---
@@ -97,6 +97,7 @@ frontend/
 │   ├── context/AuthContext.tsx      # login/logout (revoca en el servidor)/usuario
 │   ├── components/
 │   │   ├── Layout.tsx               # sidebar por rol
+│   │   ├── graficos.tsx             # tarjetas, barras, serie temporal y tablas
 │   │   └── ProtectedRoute.tsx       # guarda de rutas
 │   ├── pages/
 │   │   ├── Login.tsx
@@ -106,7 +107,8 @@ frontend/
 │   │   ├── Agenda.tsx               # calendario con franjas bloqueadas
 │   │   ├── Reservas.tsx             # gestión interna (workflow estados)
 │   │   ├── Catalogos.tsx            # servicios, estacionamientos, lavadores...
-│   │   └── Reportes.tsx             # KPIs + gráficos; con prop `resumen` es el Dashboard
+│   │   ├── Dashboard.tsx            # "¿cómo vamos ahora?": KPIs en vivo + últimos 30 días
+│   │   └── Reportes.tsx             # "¿cómo nos fue este mes?": filtro de mes + exportación
 │   ├── services/api.ts              # axios + interceptores: token, renovación
 │   │                                # automática del acceso vencido, errores
 │   └── types/index.ts               # interfaces TypeScript
@@ -180,11 +182,31 @@ La verificación dentro de la transacción elimina la condición de carrera entr
 
 ---
 
-## 7. Pruebas y CI
+## 7. Continuidad
+
+| Qué | Cuándo | Dónde queda |
+|---|---|---|
+| `scripts/respaldo.sh` | cron diario 03:30 | `~/respaldos/lavado_de_carros/` |
+
+Respalda lo irrecuperable: la base, los archivos subidos y el `.env`. El código
+no: está en GitHub; lo que sí se guarda es **a qué commit correspondían los
+datos**, porque restaurar una base sobre otro esquema es adivinar.
+
+Las fotos y comprobantes van a un **espejo incremental que nunca borra**, no
+dentro del paquete: en un año serían gigas multiplicadas por la retención, y un
+espejo que conserva lo que se borró del servidor es justamente lo que se quiere
+de la evidencia de un servicio.
+
+Cada corrida verifica el dump con `pg_restore --list`, y la restauración completa
+se probó contra una base desechable el 2026-10-08. **Falta la copia fuera del
+servidor** (`DESTINO_EXTERNO`): hoy el respaldo cubre el borrado accidental y el
+error de migración, no la pérdida del servidor. Ver `docs/12_CONTINUIDAD`.
+
+## 8. Pruebas y CI
 
 | Qué | Dónde | Cuándo corre |
 |---|---|---|
-| 184 pruebas (unitarias + integración) | `backend/tests/` | `npm test`; en cada push y PR |
+| 203 pruebas (unitarias + integración) | `backend/tests/` | `npm test`; en cada push y PR |
 | Tipos y build del frontend | — | en cada push y PR |
 | Build de las dos imágenes Docker | — | en cada push y PR |
 
@@ -197,7 +219,7 @@ de una transacción serializable, y eso solo lo verifica un motor de verdad. Hay
 un caso que dispara dos reservas en paralelo por el último cupo y exige un 201,
 un 409 y una sola fila en la tabla.
 
-## 8. Escalabilidad prevista
+## 9. Escalabilidad prevista
 
 | Necesidad futura | Cambio requerido |
 |---|---|

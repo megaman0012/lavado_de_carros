@@ -232,6 +232,24 @@ export interface KPIs {
   por_estado: { estado: string; cantidad: number }[];
 }
 
+// Totales del mes elegido en Reportes (GET /api/reportes/resumen).
+// Distinto de KPIs, que siempre mira hoy/semana/mes y alimenta el Dashboard.
+export interface ResumenPeriodo {
+  desde: string;
+  hasta: string;
+  lavados: number;
+  // Lo que suman los lavados del período...
+  facturado: number;
+  // ...y lo que efectivamente se cobró dentro de él. No tienen por qué coincidir.
+  cobrado: number;
+  // null cuando no hubo lavados: no es cero, es "no aplica"
+  ticket_promedio: number | null;
+  canceladas: number;
+  no_asistio: number;
+  calificacion_promedio: number | null;
+  calificaciones_total: number;
+}
+
 export interface Calificacion {
   id: number;
   id_reserva: number;

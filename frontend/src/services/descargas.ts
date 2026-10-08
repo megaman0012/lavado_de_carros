@@ -15,9 +15,16 @@ const aBase64 = (blob: Blob) => new Promise<string>((resolve, reject) => {
  * Descarga un archivo generado por la API (Excel, PDF) respetando el header de
  * autorización: no se puede usar un <a href> directo porque el navegador no
  * manda el token en una navegación normal.
+ *
+ * `params` viaja como querystring; Reportes lo usa para que el archivo cubra el
+ * mes que se está viendo en pantalla y no el histórico completo.
  */
-export const descargarArchivo = async (ruta: string, nombreArchivo: string) => {
-  const r = await api.get(ruta, { responseType: 'blob' });
+export const descargarArchivo = async (
+  ruta: string,
+  nombreArchivo: string,
+  params?: Record<string, string>
+) => {
+  const r = await api.get(ruta, { responseType: 'blob', params });
 
   // En la APK el WebView de Android ignora <a download>: el archivo se guarda en
   // la caché de la app y se abre el menú de compartir (WhatsApp, Drive, visor PDF...)

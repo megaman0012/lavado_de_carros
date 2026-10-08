@@ -14,7 +14,10 @@ router.get('/reserva/:id/acta.pdf', authenticate, limitadorReportes, reporteCont
 
 router.use(authenticate, requireRole('admin', 'operador'));
 
+// Dashboard: "¿cómo vamos ahora?" — hoy / esta semana / este mes, siempre en vivo
 router.get('/kpis', reporteController.kpis);
+// Reportes: "¿cómo nos fue en este mes?" — totales del período elegido
+router.get('/resumen', reporteController.resumenPeriodo);
 router.get('/por-servicio', reporteController.porServicio);
 router.get('/por-estacionamiento', reporteController.porEstacionamiento);
 router.get('/ingresos', reporteController.ingresos);

@@ -1,7 +1,7 @@
 # Plan de pruebas
 
-Version 2.0 · 2026-10-08 — se agrega la suite automatizada (ítem #14 del plan de
-trabajo). La version 1.0, del 2026-09-15, se conserva abajo sin modificar: es el
+Version 2.1 · 2026-10-08 — se agrega la suite automatizada (ítem #14) y, en la
+misma fecha, las pruebas del filtro por mes de Reportes. La version 1.0, del 2026-09-15, se conserva abajo sin modificar: es el
 registro de la auditoria y de lo que en ese momento NO se podia ejecutar.
 
 ---
@@ -45,7 +45,7 @@ Las pruebas de integracion **vacian tablas**. Tres cosas lo impiden:
 
 ## Que cubre
 
-**184 casos, 9 archivos.** Duracion: ~30 s.
+**203 casos, 10 archivos.** Duracion: ~60 s.
 
 ### Unitarias — sin base de datos (`tests/unitarios/`)
 
@@ -64,6 +64,7 @@ Las pruebas de integracion **vacian tablas**. Tres cosas lo impiden:
 | `reservas.test.js` | 48 | Creacion, validaciones, **que una franja no se venda dos veces** (incluido el caso de dos pedidos simultaneos), planes de edificio, flujo de estados y quien puede hacer que. |
 | `agenda.test.js` | 19 | Disponibilidad: franjas, capacidades por sitio, bahias, dias pasados — y que lo que la agenda marca sin cupo sea exactamente lo que crear reserva rechaza. |
 | `clientes-vehiculos.test.js` | 28 | Los vehiculos que ve el panel por cada cliente, el alta desde el panel y que un cliente no pueda ver ni tocar los de otro. |
+| `reportes.test.js` | 19 | El filtro por mes: que el periodo sea exactamente el pedido —incluidos sus bordes—, que facturado y cobrado no se confundan, y que las exportaciones cubran el mes que se esta viendo. |
 | `seguridad.test.js` | 11 | Cabeceras de helmet y que `/uploads` no entregue nada sin firma. |
 
 ## La prueba que mas importa
@@ -89,6 +90,7 @@ presentan a la misma hora.
 | T-34 | Operar la reserva de otro cliente | `reservas.test.js` |
 | T-42 | Escalada de rol modificando el JWT | `auth.test.js` (token firmado con otro secreto → 401) |
 | T-10 | Cabeceras de seguridad | `seguridad.test.js` — **corregido**: helmet las agrega y `X-Powered-By` ya no se expone |
+| T-50, T-51 | Restaurar base y archivos desde respaldo | **ejecutado a mano el 2026-10-08**, con las 11 tablas coincidiendo; procedimiento en `12_CONTINUIDAD`. Ya no es "no ejecutable": ahora hay respaldos. |
 
 La **matriz de permisos** de la v1.0, que quedaba con celdas `?`, esta resuelta
 en el codigo para clientes, vehiculos, reservas y agenda: cada combinacion
@@ -102,7 +104,7 @@ rol × endpoint de esas areas tiene su caso.
 | Webhook de pagos (T-40, T-41) | SEC-02 sigue abierto: el webhook no verifica firma porque no hay pasarela conectada. Probarlo sin arreglarlo solo documentaria el agujero. |
 | Reportes Excel / PDF (T-36) | Generan binarios; verificar su contenido pide otra clase de prueba. |
 | Frontend | No hay pruebas de componentes. La CI verifica tipos y build, no comportamiento. |
-| Recuperacion (T-50 a T-53) | Sigue dependiendo de que existan respaldos (item #17, abierto). |
+| Frontend: gráficas | El build y los tipos se verifican en la CI; que las barras y la serie temporal se vean bien no se comprueba de forma automatizada. |
 
 ---
 

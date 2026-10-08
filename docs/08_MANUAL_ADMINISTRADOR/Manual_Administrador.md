@@ -3,8 +3,9 @@
 Versión 2.1 · 2026-10-08 · Reemplaza a la 2.0 (2026-09-27) y a la 1.0 (2026-09-15, "LavadoCarros")
 
 **Novedades de la 2.1:** vehículos de cada cliente visibles desde Clientes
-(sección 2.1), sesión con renovación automática (sección 10.1) y despliegue con
-`scripts/desplegar.sh` (sección 11).
+(sección 2.1), Dashboard y Reportes ahora distintos y con filtro por mes
+(sección 9), sesión con renovación automática (sección 10.1), despliegue con
+`scripts/desplegar.sh` (sección 11) y **respaldo automático diario** (sección 13).
 
 Manual técnico: roles, catálogo, reglas de agenda, parámetros, despliegue y
 mantenimiento. El uso de las pantallas está en `07_MANUAL_USUARIO/Manual_Usuario.md`
@@ -178,17 +179,70 @@ hasta 5 MB (JPG, PNG, WEBP, GIF o PDF).
 > deja el pago pendiente, y la pantalla del cliente no ofrece tarjeta. Antes de
 > conectarla, resolver SEC-02: el webhook no valida firma.
 
-## 9. Reportes
+## 9. Dashboard y Reportes
 
-| Reporte | Endpoint |
+Hasta el 2026-10-08 eran casi la misma pantalla: el Dashboard mostraba las
+tarjetas de Reportes sin las gráficas, o sea un subconjunto. Ahora cada una
+responde una pregunta distinta.
+
+| | **Dashboard** | **Reportes** |
+|---|---|---|
+| Pregunta | ¿cómo vamos **ahora**? | ¿cómo nos fue **en este mes**? |
+| Período | fijo: hoy / esta semana / este mes, y los últimos 30 días en las gráficas | el mes que se elija |
+| Se configura | nada: se abre y se lee | selector de mes |
+| Exporta | no | Excel y PDF **del mes que está en pantalla** |
+| Para quién | el día a día del operador | revisar, comparar y cerrar el mes |
+
+### 9.1 Dashboard
+
+Cinco tarjetas (lavados de hoy, del mes, cobrado del mes, ocupación y
+calificación) y dos gráficas de los **últimos 30 días**: ingresos por día y
+lavados por servicio. Las dos miran la misma ventana a propósito, para que se
+lean juntas.
+
+Si hay solicitudes sin confirmar aparece un aviso ámbar que **lleva a Reservas
+ya filtrado**: un aviso que no se puede atender es ruido.
+
+### 9.2 Reportes
+
+El selector de mes está arriba y manda sobre todo lo de abajo. Las flechas se
+mueven de a un mes; el campo de mes salta a uno lejano. No se puede elegir un mes
+futuro.
+
+**Facturado y cobrado no son lo mismo**, y es la confusión más común al cerrar el
+mes:
+
+| | Qué suma |
 |---|---|
-| KPIs | `GET /api/reportes/kpis` |
-| Ingresos | `GET /api/reportes/ingresos` |
-| Por estacionamiento | `GET /api/reportes/por-estacionamiento` |
-| Por servicio | `GET /api/reportes/por-servicio` |
-| Exportar Excel | `GET /api/reportes/exportar/excel` |
-| Exportar PDF | `GET /api/reportes/exportar/pdf` |
-| Acta de servicio | `GET /api/reportes/reserva/:id/acta.pdf` |
+| **Facturado** | el precio de los lavados **hechos** en el mes |
+| **Cobrado** | los **pagos aprobados** con fecha dentro del mes |
+
+Un lavado del 28 de septiembre cobrado el 2 de octubre factura en septiembre y
+cobra en octubre. Cuando los dos números difieren, la pantalla lo explica sola.
+
+El **ticket promedio** es facturado ÷ lavados. Si no hubo lavados muestra "—", no
+"$0.00": cero haría pensar que se trabajó gratis.
+
+Las gráficas de barras acortan los nombres largos con puntos suspensivos; el
+nombre completo y el número exacto están en la tabla debajo de cada una. La
+gráfica de ingresos tiene un "Ver el detalle por día" plegado, con la misma
+información en texto.
+
+### 9.3 Endpoints
+
+| Reporte | Endpoint | Acepta `desde`/`hasta` |
+|---|---|---|
+| KPIs en vivo (Dashboard) | `GET /api/reportes/kpis` | no |
+| Resumen del período (Reportes) | `GET /api/reportes/resumen` | **sí** |
+| Ingresos por día | `GET /api/reportes/ingresos` | **sí** |
+| Por estacionamiento | `GET /api/reportes/por-estacionamiento` | **sí** |
+| Por servicio | `GET /api/reportes/por-servicio` | **sí** |
+| Exportar Excel | `GET /api/reportes/exportar/excel` | **sí** |
+| Exportar PDF | `GET /api/reportes/exportar/pdf` | **sí** |
+| Acta de servicio | `GET /api/reportes/reserva/:id/acta.pdf` | — |
+
+Las fechas van como `YYYY-MM-DD` e **incluyen los dos extremos**. Sin ellas, los
+agregados devuelven el histórico completo.
 
 El acta incluye el tipo de vehículo y los adicionales con su precio. Los PDF llevan
 el logo desde `backend/assets/logo-mark.png`.
@@ -315,19 +369,52 @@ hasta recompilarla** y reinstalarla.
 
 ## 13. Respaldos y recuperación
 
-Ver `12_CONTINUIDAD/Backup_Recuperacion.md`. **Sigue sin haber respaldo
-automático** (CONT-01).
+**Desde el 2026-10-08 hay respaldo automático diario** (cierra CONT-01 y el ítem
+#17 del plan). Detalle completo en `12_CONTINUIDAD/Backup_Recuperacion.md`.
 
-Existe un respaldo manual, previo al cambio a Total Clean Car:
+| | |
+|---|---|
+| Script | `scripts/respaldo.sh` |
+| Cron | diario a las **03:30**, como `server-dt` |
+| Destino | `~/respaldos/lavado_de_carros/` |
+| Retención | 30 diarios + 12 mensuales |
 
-    /home/server-dt/respaldos/lavado_de_carros/2026-09-27_pre-total-clean-car/
-      lavado_db.dump       pg_dump -Fc de la base
-      uploads_data.tgz     evidencias y comprobantes
-      env.backup           copia del .env (permisos 600)
-      git_head.txt         commit desplegado en ese momento
+Lo que hay que hacer de vez en cuando —toma cinco segundos:
 
-Para volver a ese estado: restaurar `lavado_db.dump` con `pg_restore --clean`,
-volver el código al commit de `git_head.txt` y reconstruir los contenedores.
+    ./scripts/respaldo.sh --solo-verificar
+
+Dice cuántos respaldos hay y **cuántos días tiene el más reciente**. Si pasan más
+de dos días, avisa: es la señal de que el cron dejó de correr.
+
+### ⚠️ Lo que el respaldo todavía NO cubre
+
+Está en el **mismo servidor** que el sistema (`DESTINO_EXTERNO` vacío). Cubre el
+borrado accidental, el error de migración y la corrupción de datos. **No cubre
+perder el servidor**: disco, incendio, robo. Para cerrarlo hay que definir
+`DESTINO_EXTERNO` apuntando a otro equipo, un NAS o un disco externo.
+
+### Qué contiene cada paquete
+
+    ~/respaldos/lavado_de_carros/
+      lavado_AAAA-MM-DD.tar.gz
+        base/lavado_db.dump      pg_dump -Fc, verificado al generarse
+        config/raiz.env          el .env con los secretos
+        config/docker-compose.yml, nginx.conf
+        repo/estado.txt          commit, rama y migraciones aplicadas
+      uploads/                   espejo de evidencias y comprobantes (solo crece)
+      log/respaldo.log           histórico de todas las corridas
+
+Las fotos y comprobantes **no van dentro del .tar.gz**: cada lavado suma hasta 6
+fotos y en un año serían gigas, multiplicadas por 30 días de retención. Van al
+espejo `uploads/`, que nunca borra: si alguien elimina evidencia del servidor, el
+espejo la conserva.
+
+Antes de restaurar, **mirar `repo/estado.txt`**: dice qué commit estaba corriendo
+cuando se tomó el respaldo. Restaurar una base sobre un esquema distinto es
+adivinar.
+
+También se conserva el respaldo manual previo al cambio a Total Clean Car, en
+`~/respaldos/lavado_de_carros/2026-09-27_pre-total-clean-car/`.
 
 ## 14. Mantenimiento
 
