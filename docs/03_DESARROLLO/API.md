@@ -22,6 +22,18 @@ Esquema **Bearer JWT**:
 
     Authorization: Bearer <token>
 
+Desde el **2026-10-08** la sesion son dos piezas:
+
+| Pieza | Duracion | Donde vive | Para que |
+|---|---|---|---|
+| **Token de acceso** (JWT) | `JWT_EXPIRES_IN`, por defecto **15m** | no se guarda: vale por su firma | va en `Authorization` en cada peticion |
+| **Token de refresco** | `REFRESH_EXPIRA_DIAS`, por defecto **7** | tabla `RefreshToken` (solo el SHA-256) | pedir un acceso nuevo sin volver a escribir la contrasena |
+
+El cliente renueva solo: ante un **401** llama a `POST /api/auth/refresh`,
+guarda el par nuevo y repite la peticion original. **El refresco rota en cada
+uso**; reusar uno ya quemado se interpreta como una copia robada y corta la
+sesion entera. Ver `backend/src/services/sesion.service.js`.
+
 Se obtiene con `POST /api/auth/login`. Duracion segun `JWT_EXPIRES_IN`
 (el comentario del codigo indica 24 h).
 
@@ -45,11 +57,13 @@ Roles: `admin`, `operador`, `lavador`, `cliente`.
 
 ## Grupos de rutas
 
-Montados en `backend/src/index.js`:
+Montados en `backend/src/app.js` (hasta el 2026-10-08 vivian en `src/index.js`,
+que ahora solo abre el puerto y programa el cron; se separaron para que las
+pruebas puedan importar la app sin levantar un servidor):
 
 | Prefijo | Archivo | Contenido |
 |---|---|---|
-| `/api/auth` | `auth.routes.js` | login |
+| `/api/auth` | `auth.routes.js` | login, renovacion y cierre de sesion, perfil |
 | `/api/public` | `public.routes.js` | registro, servicios y estacionamientos publicos |
 | `/api/agenda` | `agenda.routes.js` | agenda, bloqueos, asignacion de lavadores |
 | `/api/reservas` | `reserva.routes.js` | reservas, disponibilidad, evidencia, calificacion |
@@ -69,7 +83,9 @@ Los que conviene conocer aunque Swagger los detalle:
 
 | Metodo y ruta | Nota |
 |---|---|
-| `POST /api/auth/login` | limitado por **nombre de usuario**, no solo por IP |
+| `POST /api/auth/login` | limitado por **nombre de usuario**, no solo por IP. Devuelve `token` (15 min) y `refresh_token` (7 dias) |
+| `POST /api/auth/refresh` | canjea el `refresh_token` por uno de acceso nuevo. **No lleva `Authorization`**: se llama justo cuando el token vencio. Rota: guardar el `refresh_token` que devuelve, el anterior queda quemado |
+| `POST /api/auth/logout` | revoca la sesion en el servidor, no solo en el navegador. Responde 200 siempre |
 | `POST /api/public/registrar` | alta publica de cliente; no requiere token |
 | `GET /api/reservas/disponibilidad` | franjas libres por estacionamiento y fecha |
 | `POST /api/reservas/:id/evidencia` | sube fotos del lavado (multer) |

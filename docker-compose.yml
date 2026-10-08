@@ -25,6 +25,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      REFRESH_EXPIRA_DIAS: ${REFRESH_EXPIRA_DIAS:-7}
       PORT: ${PORT}
       NODE_ENV: ${NODE_ENV}
       APP_TZ: ${APP_TZ:-America/Guayaquil}

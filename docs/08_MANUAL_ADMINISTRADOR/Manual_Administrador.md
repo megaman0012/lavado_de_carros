@@ -1,6 +1,10 @@
 # Manual de administrador — Total Clean Car
 
-Versión 2.0 · 2026-09-27 · Reemplaza a la versión 1.0 (2026-09-15, "LavadoCarros")
+Versión 2.1 · 2026-10-08 · Reemplaza a la 2.0 (2026-09-27) y a la 1.0 (2026-09-15, "LavadoCarros")
+
+**Novedades de la 2.1:** vehículos de cada cliente visibles desde Clientes
+(sección 2.1), sesión con renovación automática (sección 10.1) y despliegue con
+`scripts/desplegar.sh` (sección 11).
 
 Manual técnico: roles, catálogo, reglas de agenda, parámetros, despliegue y
 mantenimiento. El uso de las pantallas está en `07_MANUAL_USUARIO/Manual_Usuario.md`
@@ -60,6 +64,29 @@ El sistema genera una contraseña temporal que se muestra **una sola vez**.
 Ningún registro de catálogo se borra: se desactiva (`activo = false` o
 `estado = 'inactivo'`). Las reservas guardan su propia copia de lo que se cobró.
 El catálogo lo pueden editar `admin` y `operador`.
+
+### 2.1 Vehículos de cada cliente
+
+En **Clientes**, la columna *Vehículos* es un botón: el número abre la lista del
+cliente debajo de su fila. De cada vehículo se ve la placa, el tipo, la marca y
+modelo, el color y si está de baja.
+
+Desde ahí mismo, sin cambiar de pantalla:
+
+| Acción | Para qué sirve |
+|---|---|
+| **Agregar vehículo** | el cliente que llega sin tener el carro cargado; evita tener que pedirle que lo registre él |
+| **Lápiz** (cambiar el tipo) | corregir un tipo mal puesto o **completar el que falta** |
+| **Prohibido / flecha** | dar de baja o reactivar. No se borra: las reservas anteriores lo siguen mostrando |
+
+> **Un vehículo "sin tipo" aparece marcado en ámbar y con un aviso.** No es un
+> detalle estético: sin tipo no hay precio (sección 3) y **ese cliente no puede
+> reservar con ese vehículo**. Son los que se cargaron antes de que existiera el
+> catálogo de tipos, en septiembre de 2026. Es la primera causa de la llamada
+> *"no me deja reservar"*: abrir su fila y ponerle el tipo lo resuelve en el acto.
+
+Los vehículos vienen en la misma respuesta que la lista de clientes, así que
+abrir la fila no consulta nada: es instantáneo.
 
 ## 3. Precios por tipo de vehículo
 
@@ -174,7 +201,8 @@ Un cambio requiere recrear el contenedor: `docker compose up -d backend`.
 
 | Variable | Efecto |
 |---|---|
-| `JWT_EXPIRES_IN` | duración de la sesión (hoy `24h`) |
+| `JWT_EXPIRES_IN` | duración del token de acceso (hoy `15m`) — ver 10.1 |
+| `REFRESH_EXPIRA_DIAS` | días que dura la sesión sin volver a escribir la contraseña (hoy `7`) |
 | `APP_TZ` | zona horaria del negocio (por defecto `America/Guayaquil`) |
 | `CORS_ORIGINS` | orígenes permitidos, separados por coma; vacío = abierto. La web no lo necesita; la APK usa el origen `http://localhost` |
 | `RATE_LIMIT_GENERAL` | límite de peticiones general |
@@ -188,6 +216,37 @@ Un cambio requiere recrear el contenedor: `docker compose up -d backend`.
 Los recordatorios salen todos los días a las **18:00 hora de `APP_TZ`**, para las
 reservas del día siguiente.
 
+### 10.1 Cómo funciona la sesión (desde el 2026-10-08)
+
+Antes el token duraba 24 horas y no se podía anular: quien se quedaba con el de
+un operador tenía un día entero de acceso, y "cerrar sesión" solo lo borraba de
+ese navegador. Ahora son dos piezas:
+
+| Pieza | Dura | Qué pasa si la roban |
+|---|---|---|
+| Token de **acceso** | `JWT_EXPIRES_IN` = 15 min | sirve 15 minutos y caduca solo |
+| Token de **refresco** | `REFRESH_EXPIRA_DIAS` = 7 días | se detecta al reusarlo y corta la sesión |
+
+**El usuario no nota nada**: el navegador y la APK renuevan el acceso por detrás.
+Sigue entrando una vez por semana, igual que antes.
+
+Lo que sí cambia para el administrador:
+
+- **Cerrar sesión ahora cierra de verdad**, también en el servidor.
+- **Restablecer la contraseña de un cliente o un lavador** (botón de la llave en
+  su ficha) **lo echa de todos lados en el acto**. Antes podía seguir trabajando
+  con el token viejo hasta un día entero.
+- Las sesiones vivas están en la tabla `RefreshToken`. Para cortar todas las de
+  una persona a mano:
+
+      docker exec lavado_de_carros-postgres-1 psql -U lavado_user -d lavado_db \
+        -c "UPDATE \"RefreshToken\" SET revocado = true WHERE id_usuario = <id>;"
+
+- **Cambiar `JWT_SECRET` cierra todas las sesiones de todos.** Es lo esperado al
+  rotarlo, pero conviene hacerlo fuera de horario de atención.
+- Al desplegar esto por primera vez, quien tenía una sesión abierta con el
+  esquema anterior entra una vez más y listo. No hay que avisar a nadie.
+
 ## 11. Despliegue y migraciones
 
 El esquema **no** usa `prisma migrate` (no hay tabla `_prisma_migrations`): se
@@ -197,8 +256,31 @@ aplicó con `db push`. Los cambios de esquema son SQL a mano en
 | Migración | Aplicada en producción |
 |---|---|
 | `2026-09-27_tipos_vehiculo_y_adicionales.sql` | 2026-09-27 12:26 |
+| `2026-10-08_refresh_tokens.sql` | pendiente |
 
-Procedimiento de despliegue (el usado el 2026-09-27, con un corte de unos 30 s):
+### 11.1 Despliegue con script (recomendado, desde el 2026-10-08)
+
+    cd /home/server-dt/Documentos/lavado_de_carros
+    ./scripts/desplegar.sh --pull
+
+Hace todo lo de abajo, en orden, y además **lleva anotado qué migraciones ya
+corrió** (tabla `_migracion_aplicada`): no se repiten ni se olvidan, que era el
+riesgo real del procedimiento manual. Termina esperando a `/api/health`; si la
+API no responde en 60 segundos, muestra el log del backend y falla.
+
+| Opción | Para qué |
+|---|---|
+| `--pull` | traer `origin/main` antes de desplegar |
+| `--solo-migraciones` | aplicar migraciones sin tocar los contenedores |
+
+**El respaldo sigue siendo manual y va primero** (sección 13): el script no lo
+hace, y el ítem #17 del plan de trabajo —respaldos automáticos— sigue abierto.
+
+Detalle completo en `docs/16_CI_CD/CI_CD.md`.
+
+### 11.2 Procedimiento manual (el usado el 2026-09-27, corte de unos 30 s)
+
+Sirve de referencia y para cuando haga falta hacer algo distinto:
 
     cd /home/server-dt/Documentos/lavado_de_carros
     # 1. Respaldo de base, archivos subidos y .env (ver sección 13)

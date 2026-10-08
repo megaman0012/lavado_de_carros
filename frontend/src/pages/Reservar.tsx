@@ -135,7 +135,7 @@ const Reservar: React.FC = () => {
     setError('');
     try {
       const r = await api.post('/auth/registrar', registro);
-      login(r.data.usuario, r.data.token);
+      login(r.data.usuario, r.data);
     } catch (e: any) {
       setError(e.message);
     } finally {

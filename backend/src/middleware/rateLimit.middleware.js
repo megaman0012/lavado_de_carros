@@ -91,6 +91,20 @@ const limitadorLogin = rateLimit({
   handler: respuesta('Demasiados intentos fallidos. Espere 15 minutos antes de volver a intentar.')
 });
 
+/**
+ * Renovación de sesión. El token de refresco son 48 bytes aleatorios: adivinarlo
+ * es inviable y este límite no es lo que lo protege. Está para que, si alguien
+ * se pone a probar tokens, no cueste una consulta a la BD por intento. Se cuenta
+ * por IP porque el token de acceso justamente está vencido cuando se llama acá.
+ */
+const limitadorRefresh = rateLimit({
+  ...base,
+  windowMs: 15 * MINUTO,
+  limit: 60,
+  keyGenerator: (req) => `rt:${rateLimit.ipKeyGenerator(req.ip)}`,
+  handler: respuesta('Demasiados intentos de renovar la sesión. Espere unos minutos.')
+});
+
 /** Alta de cuentas desde el sitio público: evita el registro masivo. */
 const limitadorRegistro = rateLimit({
   ...base,
@@ -149,6 +163,7 @@ const limitadorWebhook = rateLimit({
 module.exports = {
   limitadorGeneral,
   limitadorLogin,
+  limitadorRefresh,
   limitadorRegistro,
   limitadorSubidas,
   limitadorComprobantes,

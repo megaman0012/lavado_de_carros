@@ -3,10 +3,9 @@
  */
 
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 
 const prisma = require('../db');
-const config = require('../config');
+const sesionService = require('../services/sesion.service');
 
 // Auto-registro público de cliente (crea Cliente + Usuario rol cliente)
 const registrar = async (req, res) => {
@@ -37,15 +36,14 @@ const registrar = async (req, res) => {
       return { cliente, usuario };
     });
 
-    const token = jwt.sign(
-      { id: resultado.usuario.id, username: resultado.usuario.username, rol: 'cliente', id_cliente: resultado.cliente.id },
-      config.JWT_SECRET,
-      { expiresIn: config.JWT_EXPIRES_IN }
-    );
+    const sesion = await sesionService.abrirSesion(resultado.usuario);
 
     res.status(201).json({
       success: true,
-      data: { token, usuario: { id: resultado.usuario.id, username: resultado.usuario.username, rol: 'cliente', nombre: resultado.cliente.nombre } }
+      data: {
+        ...sesion,
+        usuario: { id: resultado.usuario.id, username: resultado.usuario.username, rol: 'cliente', nombre: resultado.cliente.nombre }
+      }
     });
   } catch (error) {
     console.error('Error registrando cliente:', error);
@@ -88,22 +86,12 @@ const login = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Esta cuenta está suspendida. Comuníquese con nosotros.' });
     }
 
-    const token = jwt.sign(
-      {
-        id: usuario.id,
-        username: usuario.username,
-        rol: usuario.rol,
-        id_cliente: usuario.id_cliente || null,
-        id_lavador: usuario.id_lavador || null
-      },
-      config.JWT_SECRET,
-      { expiresIn: config.JWT_EXPIRES_IN }
-    );
+    const sesion = await sesionService.abrirSesion(usuario);
 
     res.json({
       success: true,
       data: {
-        token,
+        ...sesion,
         usuario: {
           id: usuario.id,
           username: usuario.username,
@@ -137,4 +125,52 @@ const perfil = async (req, res) => {
   }
 };
 
-module.exports = { registrar, login, perfil };
+/**
+ * POST /api/auth/refresh { refresh_token }
+ *
+ * Lo llama el cliente solo, sin intervención del usuario, cuando el token de
+ * acceso venció (15 min). Devuelve uno nuevo y REEMPLAZA el refresh token: el
+ * anterior queda quemado, así que el cliente tiene que guardar el que viene acá.
+ */
+const refrescar = async (req, res) => {
+  try {
+    const { usuario, ...sesion } = await sesionService.refrescar(req.body?.refresh_token);
+    res.json({
+      success: true,
+      data: {
+        ...sesion,
+        usuario: {
+          id: usuario.id,
+          username: usuario.username,
+          rol: usuario.rol,
+          cliente: usuario.cliente && { id: usuario.cliente.id, nombre: usuario.cliente.nombre },
+          lavador: usuario.lavador && { id: usuario.lavador.id, nombre: usuario.lavador.nombre }
+        }
+      }
+    });
+  } catch (error) {
+    if (error.statusCode === 401) {
+      return res.status(401).json({ success: false, message: error.message });
+    }
+    console.error('Error refrescando la sesión:', error);
+    res.status(500).json({ success: false, message: 'Error al renovar la sesión' });
+  }
+};
+
+/**
+ * POST /api/auth/logout { refresh_token }
+ *
+ * Revoca la sesión en el servidor, no solo en este navegador. Responde 200
+ * siempre: para el usuario cerrar sesión no puede "fallar", y distinguir entre
+ * un token válido y uno inventado le diría a un atacante cuál acertó.
+ */
+const cerrarSesion = async (req, res) => {
+  try {
+    await sesionService.cerrarSesion(req.body?.refresh_token);
+  } catch (error) {
+    console.error('Error cerrando la sesión:', error);
+  }
+  res.json({ success: true, message: 'Sesión cerrada' });
+};
+
+module.exports = { registrar, login, perfil, refrescar, cerrarSesion };

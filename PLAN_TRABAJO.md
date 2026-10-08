@@ -50,10 +50,10 @@
 
 | # | Ítem | Por qué | Esfuerzo | Decisión |
 |---|------|---------|----------|----------|
-| 14 | **Tests backend** (Jest + supertest: reservas, agenda, anti doble-reserva) | La lógica de solapamiento es crítica; un regression ahí cuesta clientes | M | ☐ |
-| 15 | **Seguridad dura**: rate limiting, helmet, refresh token, expiración JWT | Recomendable antes de exponer a internet público | S-M | 🔶 rate limiting ✅ (2026-08-31); faltan helmet y refresh token |
-| 16 | **CI/CD** (build + tests automáticos) | Cuando haya tests (ítem 14) | M | ☐ |
-| 17 | **Backups automáticos de Postgres** | Los datos de clientes/pagos son críticos | S | ☐ |
+| 14 | **Tests backend** (Jest + supertest: reservas, agenda, anti doble-reserva) | La lógica de solapamiento es crítica; un regression ahí cuesta clientes | M | ✅ 2026-10-08 |
+| 15 | **Seguridad dura**: rate limiting, helmet, refresh token, expiración JWT | Recomendable antes de exponer a internet público | S-M | ✅ 2026-10-08 (rate limiting 2026-08-31) |
+| 16 | **CI/CD** (build + tests automáticos) | Cuando haya tests (ítem 14) | M | ✅ 2026-10-08 (CI completo; el despliegue es un script, no automático) |
+| 17 | **Backups automáticos de Postgres** | Los datos de clientes/pagos son críticos | S | ☐ **el único que queda** |
 
 ---
 
@@ -106,7 +106,50 @@ Surge del análisis del usuario sobre huecos encontrados usando el panel. Todos 
 - **Servicios y clientes no se borran**: se desactivan/suspenden. Sus reservas históricas los referencian y borrarlos rompería el histórico y los reportes.
 - **Sin pantalla de "usuarios"**: para 3-5 personas, las credenciales del lavador se gestionan dentro de su ficha.
 
-### Lo que sigue abierto (P3, sin cambios)
-- #14 Tests backend · #15 Seguridad dura (rate limiting, helmet, refresh token) · #16 CI/CD · #17 Backups de Postgres.
-- El punto #17 se vuelve más importante: el volumen `uploads_data` ahora guarda también comprobantes de pago, no solo fotos.
-- Con la variante (b) en producción convendría revisar el ítem #15 (rate limiting): la subida de comprobantes es un endpoint que un cliente autenticado puede llamar repetidamente. Hoy está acotado por "un comprobante en revisión a la vez" por reserva, que cubre el caso normal.
+### Lo que sigue abierto (P3)
+- **#17 Backups de Postgres** — el único que queda. Se vuelve más importante con
+  cada vuelta: el volumen `uploads_data` guarda comprobantes de pago, no solo
+  fotos, y ahora que el despliegue es un script conviene poder volver atrás.
+- #14, #15 y #16 quedaron cerrados el 2026-10-08 (ver el sprint F).
+
+---
+
+## Sprint F — Pruebas, seguridad de sesión y CI (2026-10-08) ✅ COMPLETO
+
+Cierra los tres ítems técnicos que quedaban de P3, más una mejora del panel
+pedida por el usuario.
+
+| # | Ítem | Esfuerzo | Estado |
+|---|------|----------|--------|
+| F1 | **#14** — 184 pruebas (Jest + supertest), unitarias y de integración | M | ✅ |
+| F2 | **#15** — `helmet` con CSP compatible con Swagger y la APK | S | ✅ |
+| F3 | **#15** — refresh token revocable, con rotación y detección de reuso | M | ✅ |
+| F4 | **#16** — CI en GitHub Actions (pruebas, tipos, build, imágenes Docker) | M | ✅ |
+| F5 | **#16** — `scripts/desplegar.sh` con migraciones anotadas y health check | S | ✅ |
+| F6 | El admin ve los vehículos de cada cliente desde la pantalla Clientes | S | ✅ |
+
+### Decisiones tomadas con el usuario
+- **Duración de la sesión: 15 min de acceso + 7 días de refresco.** Se eligió
+  sobre la alternativa de 1 h + 30 días: el usuario no nota diferencia (sigue
+  entrando una vez por semana) y un token robado sirve 15 minutos en vez de 24
+  horas.
+- **Los vehículos se ven desplegando la fila en Clientes**, no en una pantalla
+  aparte. Una pantalla global de vehículos (buscar por placa → quién es el
+  dueño) quedó descartada por ahora; si el volumen la pide, es un agregado
+  pequeño sobre `GET /api/vehiculos`, que ya acepta filtros.
+
+### Decisiones tomadas en la implementación
+- **El refresh token vive en `localStorage`, no en una cookie `httpOnly`.** La
+  APK de Capacitor corre en el origen `https://localhost` y hablaría con el
+  servidor como un tercero, donde una cookie `SameSite=None; Secure` sobre un
+  despliegue HTTP no funciona. La ganancia frente a antes —15 minutos en vez de
+  24 horas, y poder revocar— se mantiene igual. Es la siguiente mejora el día
+  que la web deje de compartir cliente con la APK.
+- **El despliegue no se automatizó desde GitHub.** Haría falta abrir SSH a
+  internet o instalar un runner autoalojado, y conviene cerrar antes el #17:
+  desplegar solo, sin poder volver atrás, cambia un trabajo manual por un
+  riesgo. El camino está documentado en `docs/16_CI_CD/CI_CD.md`.
+- **Las pruebas de subida de archivos quedaron fuera** de esta vuelta (multer
+  con archivos reales). El webhook de pagos tampoco se probó: SEC-02 sigue
+  abierto porque no hay pasarela conectada, y probarlo sin arreglarlo solo
+  documentaría el agujero.

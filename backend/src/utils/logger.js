@@ -15,6 +15,10 @@ const logFormat = winston.format.combine(
 
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
+  // En las pruebas se calla: Winston escribe directo a stdout, así que el
+  // `silent` de Jest no lo alcanza y una línea "Request" por petición tapaba el
+  // resultado de la corrida. Con LOG_LEVEL se puede volver a encender para depurar.
+  silent: process.env.NODE_ENV === 'test' && !process.env.LOG_LEVEL,
   format: logFormat,
   transports: [
     new winston.transports.Console({

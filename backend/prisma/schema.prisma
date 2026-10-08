@@ -23,8 +23,36 @@ model Usuario {
   estado     String   @default("activo")
   createdAt  DateTime @default(now())
 
-  cliente Cliente? @relation(fields: [id_cliente], references: [id])
-  lavador Lavador? @relation(fields: [id_lavador], references: [id])
+  cliente  Cliente?       @relation(fields: [id_cliente], references: [id])
+  lavador  Lavador?       @relation(fields: [id_lavador], references: [id])
+  sesiones RefreshToken[]
+}
+
+// Sesión viva de un usuario (ver services/sesion.service.js).
+//
+// El token de acceso (JWT) dura minutos y no se guarda en ningún lado: se
+// verifica con la firma. Este otro es opaco, dura días y es el que permite pedir
+// un acceso nuevo sin volver a escribir la contraseña. Se guarda solo su hash:
+// si alguien lee la tabla no se lleva sesiones usables.
+//
+// `familia` encadena las rotaciones de un mismo inicio de sesión. En cada uso el
+// token se revoca y se emite otro de la misma familia; si llega uno ya revocado
+// significa que alguien está reusando una copia robada, y se corta la familia
+// entera (la víctima y el atacante quedan afuera, y la víctima vuelve a entrar).
+model RefreshToken {
+  id         Int      @id @default(autoincrement())
+  token_hash String   @unique // SHA-256 del token entregado al cliente
+  id_usuario Int
+  familia    String
+  expira     DateTime
+  revocado   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  usuario Usuario @relation(fields: [id_usuario], references: [id], onDelete: Cascade)
+
+  @@index([id_usuario])
+  @@index([familia])
+  @@index([expira])
 }
 
 model Cliente {

@@ -9,9 +9,13 @@ module.exports = {
   // Base de datos
   DATABASE_URL: process.env.DATABASE_URL || 'postgresql://lavado_user:Lavado2026@localhost:5437/lavado_db',
 
-  // JWT
+  // JWT (token de acceso). Dura poco a propósito: la sesión larga la sostiene el
+  // refresh token, que sí se puede revocar. Ver services/sesion.service.js.
   JWT_SECRET: process.env.JWT_SECRET || 'lavado-carros-secret-key-2026',
-  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '24h',
+  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '15m',
+
+  // Refresh token: días que dura la sesión sin volver a escribir la contraseña.
+  REFRESH_EXPIRA_DIAS: parseInt(process.env.REFRESH_EXPIRA_DIAS) || 7,
 
   // Entorno
   NODE_ENV: process.env.NODE_ENV || 'development',

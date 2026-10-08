@@ -3,6 +3,7 @@
  */
 
 const prisma = require('../db');
+const sesionService = require('../services/sesion.service');
 const { generarPasswordTemporal, hashear } = require('../utils/credenciales');
 
 const listar = async (req, res) => {
@@ -145,6 +146,8 @@ const guardarUsuario = async (req, res) => {
         },
         select: { id: true, username: true, estado: true }
       });
+      // Igual que en resetPassword: cambiar la contraseña corta las sesiones abiertas.
+      if (password) await sesionService.revocarUsuario(lavador.usuario.id);
     } else {
       passwordTemporal = password || generarPasswordTemporal();
       resultado = await prisma.usuario.create({
@@ -186,6 +189,10 @@ const resetPassword = async (req, res) => {
       where: { id: lavador.usuario.id },
       data: { password: await hashear(passwordTemporal) }
     });
+    // Restablecer la contraseña tiene que echar de todos lados a quien estuviera
+    // dentro con la anterior: si no, el refresh token viejo seguiría renovando
+    // la sesión por días y el cambio de contraseña no serviría de nada.
+    await sesionService.revocarUsuario(lavador.usuario.id);
 
     res.json({
       success: true,

@@ -1,16 +1,23 @@
 # Analisis de seguridad
 
-Revision del **2026-09-15**. No se aplico ningun cambio.
+Revision del **2026-09-15**. **Actualizado el 2026-10-08** al cerrar el item #15
+del plan de trabajo: se agrego `helmet` y el token de acceso paso a durar 15
+minutos, con un refresh token revocable sosteniendo la sesion.
+
+Los hallazgos corregidos quedan en su lugar, marcados como ✅ CERRADO y con lo
+que se hizo. Borrarlos haria perder el porque.
 
 ## Resumen
 
-| Severidad | Cantidad |
-|---|---|
-| 🔴 CRITICO | 0 |
-| 🟠 ALTO | 3 |
-| 🟡 MEDIO | 4 |
-| 🔵 BAJO | 2 |
-| ⚪ INFORMATIVO | 1 |
+| Severidad | 2026-09-15 | 2026-10-08 | Cerrados |
+|---|---|---|---|
+| 🔴 CRITICO | 0 | 0 | — |
+| 🟠 ALTO | 3 | 3 | — |
+| 🟡 MEDIO | 4 | 2 | SEC-05, SEC-06 |
+| 🔵 BAJO | 2 | 2 | — |
+| ⚪ INFORMATIVO | 1 | 1 | — |
+
+SEC-11 se agrego y se cerro en la misma vuelta (2026-10-08).
 
 **Lectura general:** este proyecto tiene la mejor postura de seguridad de las
 auditadas hasta ahora. La autenticacion, la autorizacion por rol, el rate
@@ -77,7 +84,7 @@ nginx del frontend; y restringir `/api/docs` a entornos que no sean produccion.
 
 ### SEC-04 — CORS permisivo con credenciales
 
-**Evidencia:** `backend/src/index.js:30` —
+**Evidencia:** `backend/src/app.js` (hasta el 2026-10-08, `src/index.js:30`) —
 `app.use(cors({ origin: true, credentials: true }))`.
 
 `origin: true` **refleja el Origin que envie quien llame**, es decir acepta
@@ -90,19 +97,71 @@ sitio de terceros no puede aprovechar la sesion del navegador automaticamente.
 **Recomendacion:** declarar la lista de origenes permitidos en vez de reflejar
 cualquiera.
 
-### SEC-05 — Sin cabeceras de seguridad (falta helmet)
+### SEC-05 — Sin cabeceras de seguridad (falta helmet) · ✅ CERRADO 2026-10-08
 
-**Evidencia:** la respuesta de la API no incluye `Strict-Transport-Security`,
-`X-Frame-Options`, `X-Content-Type-Options` ni `Content-Security-Policy`. No
-hay `helmet` en las dependencias.
+**Evidencia (2026-09-15):** la respuesta de la API no incluia
+`Strict-Transport-Security`, `X-Frame-Options`, `X-Content-Type-Options` ni
+`Content-Security-Policy`. No habia `helmet` en las dependencias.
 
-**Recomendacion:** agregar `helmet`; es una linea y cubre el conjunto.
+**Corregido:** `helmet` montado en `backend/src/app.js`, con tres desvios del
+default, cada uno razonado en el propio codigo:
 
-### SEC-06 — La version del framework se anuncia en cada respuesta
+| Ajuste | Por que |
+|---|---|
+| `contentSecurityPolicy` permite estilos y scripts inline | el CSP por defecto deja Swagger UI (`/api/docs`) en blanco. El HTML de la aplicacion no sale de la API: lo sirve nginx, con su propio origen. |
+| `crossOriginResourcePolicy: cross-origin` | las fotos y comprobantes de `/uploads` se muestran con `<img src>` desde la APK de Capacitor, que corre en el origen `https://localhost`. Con el default (`same-origin`) el operador veria recuadros vacios. |
+| `hsts: false` | el despliegue actual es HTTP detras de nginx. Activarlo sin TLS no protege nada y, si alguien entra una vez por HTTPS, deja el dominio clavado ahi por meses. **Cuando haya certificado: `hsts: { maxAge: 15552000 }`.** |
 
-**Evidencia:** cabecera `X-Powered-By: Express` (verificado).
+Verificado por `backend/tests/integracion/seguridad.test.js`, que falla si
+alguien quita helmet o afloja estos valores.
 
-**Recomendacion:** `app.disable('x-powered-by')`, o queda cubierto por helmet.
+### SEC-06 — La version del framework se anuncia en cada respuesta · ✅ CERRADO 2026-10-08
+
+**Evidencia (2026-09-15):** cabecera `X-Powered-By: Express`.
+
+**Corregido:** helmet la quita. Con prueba automatizada en `seguridad.test.js`.
+
+### SEC-11 — El token de sesion duraba 24 horas y no se podia revocar · ✅ CERRADO 2026-10-08
+
+Hallazgo agregado el 2026-10-08, al revisar el item #15 del plan (no estaba en
+la auditoria original).
+
+**Problema:** el JWT duraba 24 horas y no se guardaba en ningun lado, asi que no
+habia forma de anularlo. Quien se quedaba con el token de un operador —un celular
+prestado, un `localStorage` leido— tenia un dia entero de acceso, y "cerrar
+sesion" solo lo borraba del navegador propio. Restablecer una contrasena tampoco
+cortaba nada: el token viejo seguia valiendo.
+
+**Corregido:** la sesion son ahora dos piezas (`backend/src/services/sesion.service.js`):
+
+- **Token de acceso** — el JWT de siempre, pero de **15 minutos**. Sigue sin
+  guardarse: vale por su firma. Robado, caduca solo.
+- **Token de refresco** — 48 bytes aleatorios (no un JWT: no dice nada ni vale
+  por si mismo), **7 dias**, guardado en la tabla `RefreshToken`. En la base
+  queda **solo su SHA-256**: quien lea la tabla no se lleva sesiones usables.
+
+Tres propiedades que antes no existian:
+
+1. **Rotacion.** Cada renovacion quema el token usado y entrega otro.
+2. **Deteccion de reuso.** Si llega un token ya revocado, hay dos copias dando
+   vueltas: se corta la *familia* entera. La victima vuelve a entrar; el
+   atacante queda afuera.
+3. **Revocacion de verdad.** Cerrar sesion avisa al servidor. Restablecer una
+   contrasena corta todas las sesiones abiertas con la anterior.
+
+El cliente serializa la renovacion (una sola en vuelo, `frontend/src/services/api.ts`)
+porque el panel dispara varias llamadas por pantalla y dos refrescos simultaneos
+del mismo token pareceran —con razon— el reuso de una copia.
+
+**Lo que no cambia:** el refresh token vive en `localStorage`, no en una cookie
+`httpOnly`. Es la decision pragmatica por la APK: Capacitor corre en el origen
+`https://localhost` y hablaria con el servidor como un tercero, donde una cookie
+`SameSite=None; Secure` sobre un despliegue HTTP no funciona. La ganancia real
+frente a antes —ventana de 15 minutos en vez de 24 horas, y poder revocar— se
+mantiene igual. Si algun dia la web deja de compartir cliente con la APK, la
+cookie `httpOnly` es la siguiente mejora.
+
+Cubierto por 28 casos en `backend/tests/integracion/auth.test.js`.
 
 ### SEC-07 — El rol es texto libre, sin restriccion en la base de datos
 

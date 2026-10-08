@@ -2,6 +2,71 @@
 
 ## [Sin publicar]
 
+### 2026-10-08 — Pruebas, seguridad de sesión y CI (pendiente de desplegar)
+
+Cierra los ítems **#14 (tests backend)**, **#15 (seguridad dura)** y **#16
+(CI/CD)** del `PLAN_TRABAJO.md`, y agrega la vista de vehículos por cliente en
+el panel.
+
+#### Agregado
+- **184 pruebas automatizadas** (`backend/tests/`, Jest + supertest).
+  - *Unitarias*, sin base de datos: fechas, solapamiento de franjas, cotización
+    y firma de archivos.
+  - *De integración*, contra un PostgreSQL de pruebas: autenticación, reservas,
+    agenda, clientes/vehículos y cabeceras de seguridad.
+  - La que más importa: **dos pedidos simultáneos por el último cupo entran
+    exactamente una vez**. Es la única forma de verificar que la transacción
+    serializable de `reserva.controller.js` sigue en su lugar.
+  - Resguardo: la URL sale de `DATABASE_URL_TEST`, nunca de `DATABASE_URL`, y
+    `tests/ayudas/bd.js` se niega a vaciar una base cuyo nombre no diga "test".
+- **`helmet`** con tres desvíos del default, cada uno razonado en el código:
+  CSP que no rompe Swagger UI, `crossOriginResourcePolicy: cross-origin` para
+  que la APK pueda mostrar las fotos de `/uploads`, y HSTS apagado mientras el
+  despliegue sea HTTP.
+- **Refresh token revocable.** El acceso pasa a durar **15 minutos** y la sesión
+  la sostiene un token opaco de **7 días**, guardado solo como SHA-256, que rota
+  en cada uso. Reusar una copia revocada corta la sesión entera. Endpoints
+  nuevos: `POST /api/auth/refresh` y `POST /api/auth/logout`.
+  - Cerrar sesión ahora revoca en el servidor, no solo en el navegador.
+  - **Restablecer una contraseña echa a esa persona de todos lados en el acto.**
+  - El cliente renueva solo ante un 401 y repite la petición: el usuario no nota
+    nada. La renovación está serializada (una sola en vuelo) para que dos
+    pestañas no parezcan el reuso de un token robado.
+- **Integración continua** (`.github/workflows/ci.yml`): en cada push y cada PR
+  corre las pruebas del backend contra un PostgreSQL real, verifica tipos y
+  build del frontend, y construye las dos imágenes Docker.
+- **`scripts/desplegar.sh`**: despliegue con comprobación del `.env`, aplicación
+  de las migraciones pendientes —anotadas en `_migracion_aplicada`, para que no
+  se repitan ni se olviden— y espera al health check.
+- **El panel ve los vehículos de cada cliente.** En *Clientes*, el número de la
+  columna *Vehículos* despliega la lista bajo la fila: placa, tipo, marca,
+  modelo, color y estado. Desde ahí se agrega un vehículo, se corrige su tipo o
+  se da de baja. **Un vehículo sin tipo se marca en ámbar**: sin tipo no hay
+  precio y ese cliente no puede reservar, y es la primera causa de la llamada
+  "no me deja reservar".
+
+#### Cambiado
+- `src/index.js` se partió en dos: **`src/app.js`** arma la aplicación y
+  `src/index.js` abre el puerto y programa el cron. Era necesario para que las
+  pruebas importen la app sin levantar un servidor ni disparar recordatorios.
+- `GET /api/clientes` devuelve los vehículos con el tipo ya resuelto y ordenados
+  por placa, para que el panel no tenga que cruzar el catálogo en el navegador.
+- El logger se calla con `NODE_ENV=test` (Winston escribe directo a stdout y el
+  `silent` de Jest no lo alcanzaba).
+- `.env`: `JWT_EXPIRES_IN` pasa de `24h` a `15m`; se agrega `REFRESH_EXPIRA_DIAS`.
+
+#### Migración
+- `backend/prisma/migraciones/2026-10-08_refresh_tokens.sql`: agrega la tabla
+  `RefreshToken`. **No toca ningún dato existente.** Las sesiones abiertas con
+  un JWT de 24 horas siguen valiendo hasta vencer; al vencer, esa gente inicia
+  sesión una vez y queda con el flujo nuevo.
+
+#### Sigue abierto
+- #17 Respaldos automáticos de Postgres — el único ítem de P3 que queda, y el
+  más importante antes de automatizar el despliegue.
+- SEC-01 a SEC-04 y SEC-10 del análisis de seguridad (exposición de red, webhook
+  de pagos sin firma, HTTPS).
+
 ### 2026-09-27 — Total Clean Car (pendiente de desplegar)
 
 Referencia de diseño: la compra de una entrada de cine (sala = tipo de vehículo,

@@ -3,3 +3,7 @@ logs
 uploads
 .env
 *.log
+# Las pruebas no van a la imagen de producción: las corre la CI, no el contenedor.
+tests
+jest.config.js
+coverage

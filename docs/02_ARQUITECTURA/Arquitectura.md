@@ -15,7 +15,7 @@ mensajeria (Twilio WhatsApp y SMS).
 | Base de datos | PostgreSQL | **15.18** (verificado en ejecucion) | `SELECT version()` |
 | Autenticacion | JWT (`jsonwebtoken`) + `bcryptjs` | 9.0.2 / 2.4.3 | `backend/package.json` |
 | Subida de archivos | multer | 1.4.5-lts.1 | `backend/package.json` |
-| Documentacion API | Swagger UI | — | `backend/src/index.js` |
+| Documentacion API | Swagger UI | — | `backend/src/app.js` |
 | Correo | SMTP | — | variables `SMTP_*` |
 | Mensajeria | Twilio (WhatsApp + SMS) | — | variables `TWILIO_*` |
 

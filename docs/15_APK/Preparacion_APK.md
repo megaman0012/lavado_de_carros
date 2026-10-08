@@ -127,7 +127,7 @@ actualizaciones. Guardarlo fuera del repositorio y con respaldo.
 | `frontend/src/services/config.ts` | `SERVIDOR`, `API_URL`, `urlArchivo()` y `esAppNativa()` |
 | Fotos y comprobantes | Usan `urlArchivo()`. En la web no cambia nada; en la APK apuntan al servidor |
 | `serviceWorkerRegistration.ts` | No registra el service worker dentro de la app nativa |
-| `backend/src/index.js` | CORS configurable con `CORS_ORIGINS` |
+| `backend/src/app.js` | CORS configurable con `CORS_ORIGINS` |
 | `pages/Reservar.tsx` | El paso va en `?paso=N`, así el botón atrás de Android retrocede un paso |
 | `pages/Login.tsx` | Con la sesión abierta no muestra el formulario; el login no queda en el historial |
 

@@ -26,7 +26,7 @@ const Login: React.FC = () => {
     setCargando(true);
     try {
       const res = await api.post('/auth/login', { username, password });
-      login(res.data.usuario, res.data.token);
+      login(res.data.usuario, res.data);
       // replace: el login no queda en el historial, así "atrás" no vuelve a él
       navigate(location.state?.from?.pathname || rutaInicio(res.data.usuario.rol), { replace: true });
     } catch (err: any) {

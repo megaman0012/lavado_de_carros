@@ -1,0 +1,115 @@
+# Integración continua - Total Clean Car
+#
+# Qué verifica cada push y cada pull request:
+#   backend   las 184 pruebas (unitarias + integración contra un PostgreSQL real)
+#   frontend  que TypeScript compile y que el build de producción salga limpio
+#   imagenes  que los dos Dockerfile sigan construyendo (es como se despliega)
+#
+# Los tres trabajos corren en paralelo: si el frontend se rompe, igual se ve el
+# resultado del backend en la misma corrida.
+#
+# El despliegue NO está acá: el servidor es propio y no hay runner con acceso.
+# Se hace con scripts/desplegar.sh, documentado en docs/16_CI_CD/.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: # permite lanzarlo a mano desde la pestaña Actions
+
+jobs:
+  backend:
+    name: Backend (pruebas)
+    runs-on: ubuntu-latest
+
+    services:
+      # Las pruebas de integración necesitan un PostgreSQL de verdad: la lógica
+      # que más importa —que una franja no se venda dos veces— depende de una
+      # transacción serializable, y eso no se puede simular con dobles.
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: lavado_user
+          POSTGRES_PASSWORD: clave_de_pruebas
+          # El nombre lleva "test" a propósito: tests/ayudas/bd.js se niega a
+          # vaciar una base cuyo nombre no lo tenga.
+          POSTGRES_DB: lavado_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://lavado_user:clave_de_pruebas@localhost:5432/lavado_test
+      DATABASE_URL_TEST: postgresql://lavado_user:clave_de_pruebas@localhost:5432/lavado_test
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20' # la misma que el Dockerfile (node:20-slim)
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar el cliente de Prisma
+        run: npx prisma generate
+
+      - name: Crear el esquema en la base de pruebas
+        run: npx prisma db push --skip-generate
+
+      - name: Pruebas
+        run: npm test
+
+  frontend:
+    name: Frontend (tipos y build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Verificar tipos
+        run: npx tsc --noEmit
+
+      - name: Build de producción
+        # CI=true hace que un warning de ESLint falle la corrida, que es lo que
+        # se quiere: los warnings se arreglan, no se acumulan.
+        run: CI=true npm run build
+
+  imagenes:
+    name: Imágenes Docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Se construyen sueltas y no con `docker compose build` para no depender
+      # del .env (que no está versionado): acá solo interesa que los Dockerfile
+      # sigan siendo válidos.
+      - name: Construir la imagen del backend
+        run: docker build -t totalcleancar-backend:ci ./backend
+
+      - name: Construir la imagen del frontend
+        run: docker build -t totalcleancar-frontend:ci ./frontend

@@ -3,7 +3,17 @@
  */
 
 const prisma = require('../db');
+const sesionService = require('../services/sesion.service');
 const { generarPasswordTemporal, hashear } = require('../utils/credenciales');
+
+// Vehículos del cliente tal como los muestra el panel: con el tipo resuelto
+// (de él dependen los precios) y ordenados por placa. Se devuelven también los
+// dados de baja —con su `estado`— porque el panel los marca en vez de ocultarlos:
+// un vehículo inactivo sigue apareciendo en las reservas históricas.
+const incluirVehiculos = {
+  include: { tipoVehiculo: { select: { id: true, codigo: true, nombre: true } } },
+  orderBy: { placa: 'asc' }
+};
 
 const listar = async (req, res) => {
   try {
@@ -19,7 +29,7 @@ const listar = async (req, res) => {
     }
     const clientes = await prisma.cliente.findMany({
       where,
-      include: { vehiculos: true, usuario: { select: { id: true, username: true, rol: true } } },
+      include: { vehiculos: incluirVehiculos, usuario: { select: { id: true, username: true, rol: true } } },
       orderBy: { nombre: 'asc' }
     });
     res.json({ success: true, data: clientes });
@@ -33,7 +43,7 @@ const obtener = async (req, res) => {
   try {
     const cliente = await prisma.cliente.findUnique({
       where: { id: parseInt(req.params.id) },
-      include: { vehiculos: true, reservas: true, usuario: { select: { id: true, username: true } } }
+      include: { vehiculos: incluirVehiculos, reservas: true, usuario: { select: { id: true, username: true } } }
     });
     if (!cliente) return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
     res.json({ success: true, data: cliente });
@@ -123,6 +133,9 @@ const generarAcceso = async (req, res) => {
         where: { id: cliente.usuario.id },
         data: { password, username: cliente.email, estado: 'activo' }
       });
+      // La contraseña anterior deja de servir, y las sesiones que la usaron también:
+      // sin esto, un refresh token viejo seguiría renovando el acceso durante días.
+      await sesionService.revocarUsuario(cliente.usuario.id);
     } else {
       const ocupado = await prisma.usuario.findUnique({ where: { username: cliente.email } });
       if (ocupado) {

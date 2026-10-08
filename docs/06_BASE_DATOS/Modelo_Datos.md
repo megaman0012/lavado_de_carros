@@ -49,6 +49,7 @@ salientes. Todo el modelo gira alrededor de ella.
 | Entidad | Para que | Filas reales |
 |---|---|---|
 | `Usuario` | credenciales y rol | 11 |
+| `RefreshToken` | sesiones vivas, revocables (desde 2026-10-08) | — |
 | `Cliente` | ficha del cliente | 6 |
 | `Vehiculo` | vehiculos del cliente | 8 |
 | `Estacionamiento` | sitio donde se presta el servicio | 5 |
@@ -64,7 +65,26 @@ salientes. Todo el modelo gira alrededor de ella.
 | `HistorialReserva` | bitacora de cambios de estado | 31 |
 | `Calificacion` | valoracion del cliente | 3 |
 
-Conteos exactos con `count(*)` al 2026-09-15.
+Conteos exactos con `count(*)` al 2026-09-15. `RefreshToken`, `TipoVehiculo`,
+`PrecioServicio`, `ServicioAdicional` y `ReservaAdicional` son posteriores a esa
+fecha y no tienen conteo de la auditoria.
+
+### `RefreshToken` (2026-10-08)
+
+Una fila por sesion viva. Guarda **solo el SHA-256** del token entregado al
+cliente: quien lea la tabla no se lleva sesiones usables.
+
+| Columna | Para que |
+|---|---|
+| `token_hash` | SHA-256 del token; unico |
+| `id_usuario` | dueno de la sesion; `ON DELETE CASCADE` |
+| `familia` | encadena las rotaciones de un mismo inicio de sesion |
+| `expira` | vencimiento (`REFRESH_EXPIRA_DIAS`, 7 por defecto) |
+| `revocado` | ya usado, o cortado por logout / reuso detectado |
+
+La `familia` es lo que permite detectar el reuso: si llega un token ya revocado,
+hay dos copias dando vueltas y se revoca la familia completa. Las filas vencidas
+se purgan en cada inicio de sesion del mismo usuario.
 
 > **Advertencia metodologica:** no usar `pg_stat_user_tables.n_live_tup` para
 > contar filas de este sistema. Durante esta auditoria esa vista reportaba
@@ -99,7 +119,11 @@ Distribucion real: `cliente` 6, `lavador` 3, `admin` 1, `operador` 1.
 
 ## Migraciones y seeds
 
-- Migraciones: Prisma (`npm run db:push`, `db:generate` en `package.json`).
+- Esquema: Prisma (`npm run db:push`, `db:generate` en `package.json`).
+- Migraciones de produccion: archivos `.sql` sueltos en
+  `backend/prisma/migraciones/`. **Desde el 2026-10-08 las aplica
+  `scripts/desplegar.sh`**, que lleva anotado en la tabla `_migracion_aplicada`
+  cual ya se corrio; antes se copiaban y pegaban a mano.
 - Seed: existe `npm run db:seed`. El commit `9837353` menciona *"Seed de demo:
   restaurar contrasenas y dejar comprobantes por validar"*, lo que confirma que
   **los datos actuales son de demostracion**.

@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Usuario } from '../types';
 import { esAppNativa } from '../services/config';
+import api, { guardarSesion, limpiarSesion, tokenRefresco, Sesion } from '../services/api';
 
 interface AuthContextType {
   usuario: Usuario | null;
   isAuthenticated: boolean;
-  login: (usuario: Usuario, token: string) => void;
+  login: (usuario: Usuario, sesion: Sesion) => void;
   logout: () => void;
   hasRole: (roles: string[]) => boolean;
   loading: boolean;
@@ -36,22 +37,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
         setUsuario(JSON.parse(usuarioData));
       } catch {
-        localStorage.removeItem('token');
-        localStorage.removeItem('usuario');
+        limpiarSesion();
       }
     }
     setLoading(false);
   }, []);
 
-  const login = (usuarioData: Usuario, token: string) => {
-    localStorage.setItem('token', token);
+  const login = (usuarioData: Usuario, sesion: Sesion) => {
+    guardarSesion(sesion);
     localStorage.setItem('usuario', JSON.stringify(usuarioData));
     setUsuario(usuarioData);
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('usuario');
+    // Avisarle al servidor revoca la sesión de verdad, no solo en este navegador:
+    // sin esto el token de refresco seguiría sirviendo hasta vencer. Se hace sin
+    // esperar la respuesta — cerrar sesión no puede quedar colgado de la red.
+    const refresco = tokenRefresco();
+    if (refresco) api.post('/auth/logout', { refresh_token: refresco }).catch(() => {});
+    limpiarSesion();
     setUsuario(null);
   };
 

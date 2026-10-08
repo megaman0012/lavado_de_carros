@@ -1,7 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Users, Pencil, X, Info, UserCheck, UserX, KeyRound, Copy, Check } from 'lucide-react';
+import {
+  Users, Pencil, X, Info, UserCheck, UserX, KeyRound, Copy, Check,
+  ChevronDown, ChevronRight, Plus, Ban, RotateCcw, AlertTriangle
+} from 'lucide-react';
 import api from '../services/api';
-import { Cliente } from '../types';
+import { Cliente, TipoVehiculo, Vehiculo } from '../types';
+import FormVehiculo, { IconoTipo, SelectorTipoVehiculo, useTiposVehiculo } from '../components/FormVehiculo';
 
 const FORM_VACIO = { nombre: '', cedula: '', telefono: '', email: '', crear_acceso: true };
 
@@ -37,12 +41,142 @@ const AvisoCredenciales: React.FC<{ username: string; password: string; titulo: 
     );
   };
 
+/**
+ * Los vehículos de un cliente, desplegados bajo su fila.
+ *
+ * Se arman con lo que ya trae GET /api/clientes (el backend los devuelve con el
+ * tipo resuelto y ordenados por placa), así que abrir la fila no dispara otra
+ * consulta. Es la pantalla donde el operador resuelve el caso más molesto del
+ * día: un cliente que no puede reservar porque su vehículo quedó sin tipo, de
+ * los que se cargaron antes de que existiera el catálogo.
+ */
+const VehiculosDelCliente: React.FC<{
+  cliente: Cliente;
+  tipos: TipoVehiculo[];
+  onCambio: () => void;
+}> = ({ cliente, tipos, onCambio }) => {
+  const [agregando, setAgregando] = useState(false);
+  const [editando, setEditando] = useState<number | null>(null);
+  const [error, setError] = useState('');
+  const vehiculos = cliente.vehiculos || [];
+
+  const cambiarTipo = async (v: Vehiculo, idTipo: number) => {
+    setError('');
+    try {
+      await api.put(`/vehiculos/${v.id}`, { id_tipo_vehiculo: idTipo });
+      setEditando(null);
+      onCambio();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const alternarEstado = async (v: Vehiculo) => {
+    const activo = (v.estado || 'activo') === 'activo';
+    if (activo && !window.confirm(
+      `¿Dar de baja el vehículo ${v.placa}?\n\nNo podrá usarse en reservas nuevas. ` +
+      'Las reservas anteriores lo siguen mostrando.'
+    )) return;
+    setError('');
+    try {
+      if (activo) await api.delete(`/vehiculos/${v.id}`);
+      else await api.put(`/vehiculos/${v.id}`, { estado: 'activo' });
+      onCambio();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  return (
+    <div className="bg-slate-50 px-4 py-3 space-y-2">
+      {vehiculos.length === 0 && !agregando && (
+        <p className="text-sm text-slate-400">Este cliente todavía no tiene vehículos registrados.</p>
+      )}
+
+      {vehiculos.map((v) => {
+        const activo = (v.estado || 'activo') === 'activo';
+        const descripcion = [v.marca, v.modelo].filter(Boolean).join(' ');
+        return (
+          <div key={v.id} className={`bg-white border rounded-lg px-3 py-2 ${activo ? 'border-slate-200' : 'border-slate-200 opacity-60'}`}>
+            <div className="flex items-center gap-3">
+              <IconoTipo codigo={v.tipoVehiculo?.codigo} size={22} className="text-sky-600 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <span className="font-mono font-medium tracking-wide">{v.placa}</span>
+                <span className="text-slate-400"> · </span>
+                {v.tipoVehiculo ? (
+                  <span className="text-slate-600">{v.tipoVehiculo.nombre}</span>
+                ) : (
+                  <span className="text-amber-600 inline-flex items-center gap-1">
+                    <AlertTriangle size={13} /> sin tipo
+                  </span>
+                )}
+                <span className="block text-xs text-slate-400 truncate">
+                  {[descripcion, v.color].filter(Boolean).join(' · ') || 'sin marca ni modelo'}
+                </span>
+              </div>
+              {!activo && <span className="text-xs bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full">de baja</span>}
+              <button onClick={() => setEditando(editando === v.id ? null : v.id)}
+                title="Cambiar el tipo de vehículo"
+                className="p-1.5 text-sky-600 hover:bg-sky-50 rounded shrink-0">
+                <Pencil size={15} />
+              </button>
+              <button onClick={() => alternarEstado(v)}
+                title={activo ? 'Dar de baja' : 'Reactivar'}
+                className={`p-1.5 rounded shrink-0 ${activo ? 'text-slate-400 hover:bg-slate-100' : 'text-green-600 hover:bg-green-50'}`}>
+                {activo ? <Ban size={15} /> : <RotateCcw size={15} />}
+              </button>
+            </div>
+
+            {!v.tipoVehiculo && editando !== v.id && (
+              <p className="text-xs text-amber-600 mt-1 ml-9">
+                Sin tipo no se le puede cotizar ningún servicio: este cliente no podrá reservar con él.
+              </p>
+            )}
+
+            {editando === v.id && (
+              <div className="mt-3 pt-3 border-t">
+                <p className="text-xs font-medium text-slate-600 mb-2">Tipo de vehículo</p>
+                <SelectorTipoVehiculo
+                  tipos={tipos}
+                  valor={v.id_tipo_vehiculo ?? null}
+                  onChange={(id) => cambiarTipo(v, id)}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
+      {agregando ? (
+        <div className="bg-white border border-sky-200 rounded-lg p-3">
+          <FormVehiculo
+            tipos={tipos}
+            idCliente={cliente.id}
+            onCreado={() => { setAgregando(false); onCambio(); }}
+            onCancelar={() => setAgregando(false)}
+          />
+        </div>
+      ) : (
+        <button onClick={() => setAgregando(true)}
+          className="text-sm text-sky-600 hover:text-sky-700 inline-flex items-center gap-1">
+          <Plus size={15} /> Agregar vehículo
+        </button>
+      )}
+    </div>
+  );
+};
+
 const Clientes: React.FC = () => {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [form, setForm] = useState(FORM_VACIO);
   const [editando, setEditando] = useState<Cliente | null>(null);
   const [credenciales, setCredenciales] = useState<{ username: string; password: string; titulo: string } | null>(null);
+  // Fila desplegada con los vehículos; una sola a la vez para que la tabla no crezca sin control
+  const [verVehiculosDe, setVerVehiculosDe] = useState<number | null>(null);
+  const tipos = useTiposVehiculo();
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
@@ -232,8 +366,10 @@ const Clientes: React.FC = () => {
                 <tbody className="divide-y">
                   {clientes.map((c) => {
                     const activo = (c.estado || 'activo') === 'activo';
+                    const desplegado = verVehiculosDe === c.id;
                     return (
-                      <tr key={c.id} className={`hover:bg-slate-50 ${editando?.id === c.id ? 'bg-sky-50' : ''} ${activo ? '' : 'opacity-60'}`}>
+                      <React.Fragment key={c.id}>
+                      <tr className={`hover:bg-slate-50 ${editando?.id === c.id ? 'bg-sky-50' : ''} ${activo ? '' : 'opacity-60'}`}>
                         <td className="px-4 py-3">
                           <span className="font-medium">{c.nombre}</span>
                           <span className="block text-xs text-slate-400">{c.cedula || 'sin cédula'}</span>
@@ -253,7 +389,18 @@ const Clientes: React.FC = () => {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-center">{c.vehiculos?.length ?? 0}</td>
+                        <td className="px-4 py-3 text-center">
+                          {/* El número abre el detalle: los vehículos ya vienen en la respuesta */}
+                          <button onClick={() => setVerVehiculosDe(desplegado ? null : c.id)}
+                            title={desplegado ? 'Ocultar vehículos' : 'Ver vehículos'}
+                            aria-expanded={desplegado}
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-sm ${
+                              desplegado ? 'bg-sky-100 text-sky-700' : 'text-slate-600 hover:bg-slate-100'
+                            }`}>
+                            {desplegado ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                            {c.vehiculos?.length ?? 0}
+                          </button>
+                        </td>
                         <td className="px-4 py-3 text-center">
                           <button onClick={() => toggleEstado(c)}
                             title={activo ? 'Clic para suspender' : 'Clic para reactivar'}
@@ -275,6 +422,14 @@ const Clientes: React.FC = () => {
                           </div>
                         </td>
                       </tr>
+                      {desplegado && (
+                        <tr>
+                          <td colSpan={6} className="p-0">
+                            <VehiculosDelCliente cliente={c} tipos={tipos} onCambio={cargar} />
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

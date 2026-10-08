@@ -7,6 +7,7 @@
 | 1.0 | 2026-09-15 | Auditoria tecnica y documentacion completa. Se conserva toda la documentacion previa sin modificar. | Auditoria tecnica |
 | 2.0 | 2026-09-27 | `07_MANUAL_USUARIO` reescrito para Total Clean Car: roles, reserva en seis pasos, precios por tipo de vehiculo, adicionales, app Android; 13 capturas nuevas (solo datos de demostracion). Nuevo `15_APK/Preparacion_APK.md`. Copia editable en linea enlazada desde el manual. | Desarrollo |
 | 2.1 | 2026-09-27 | `08_MANUAL_ADMINISTRADOR` v2.0: precios por tipo de vehiculo, adicionales, reglas de cupos, zona horaria, parametros `APP_TZ` y `CORS_ORIGINS`, procedimiento de despliegue y migraciones, APK y respaldo. Corrige tres rutas de API de la v1.0 que no existian (reinicio de credenciales, acta, asignar lavador). | Desarrollo |
+| 3.0 | 2026-10-08 | Cierre de los items #14, #15 y #16 del plan de trabajo. Nuevo `16_CI_CD/CI_CD.md`. `13_PRUEBAS` v2.0 (suite automatizada de 184 casos). `05_SEGURIDAD`: SEC-05 y SEC-06 cerrados, SEC-11 agregado y cerrado. `08_MANUAL_ADMINISTRADOR` v2.1 (vehiculos por cliente, como funciona la sesion, despliegue con script). `03_DESARROLLO/API.md` y `06_BASE_DATOS` al dia. | Desarrollo |
 
 ## Aplicacion
 
@@ -14,6 +15,10 @@ Sin etiquetas de version en git. Reconstruido desde el historial de commits:
 
 | Fecha | Commit | Cambio |
 |---|---|---|
+| 2026-10-08 | pendiente | **Pruebas, seguridad de sesion y CI:** 184 pruebas automatizadas, `helmet`, refresh token revocable, GitHub Actions, script de despliegue y vehiculos por cliente en el panel (ver `CHANGELOG.md`) |
+| 2026-09-27 | `86d2182` | Manual de administrador 2.0 |
+| 2026-09-27 | `9fc57ab` | Manual de usuario 2.0 |
+| 2026-09-27 | `bf04ce3` | APK Android de prueba con Capacitor 8 |
 | 2026-09-27 | `11d0ea2` | APK: admin y operador arrancan en la Agenda en el celular |
 | 2026-09-27 | `6cb9513` | **Total Clean Car:** precios por tipo de vehiculo, adicionales, correccion de fechas, sesion y preparacion de la APK (ver `CHANGELOG.md`) |
 | 2026-08-31 | `6580332` | Documentar rate limiting y el analisis Dashboard vs Reportes |
@@ -32,7 +37,7 @@ Sin etiquetas de version en git. Reconstruido desde el historial de commits:
 |---|---|
 | Ruta | `/home/server-dt/Documentos/lavado_de_carros` |
 | Rama | `main` |
-| Ultimo commit | 2026-09-27 |
+| Ultimo commit | 2026-09-27 (`86d2182`) |
 | Remoto | `megaman0012/lavado_de_carros` en GitHub (actualizado el 2026-09-27) |
 
 Al momento de la auditoria (2026-09-15) no habia remoto configurado; el riesgo de
