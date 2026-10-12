@@ -69,4 +69,20 @@ const requireRole = (...roles) => (req, res, next) => {
   next();
 };
 
-module.exports = { authenticate, requireRole };
+/**
+ * Para rutas públicas que responden distinto con sesión (la disponibilidad:
+ * un VIP ve los cupos apartados). Sin token, o con uno inválido, sigue como
+ * anónimo en vez de responder 401.
+ */
+const authenticateOpcional = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return next();
+  try {
+    req.usuario = jwt.verify(token, config.JWT_SECRET);
+  } catch (error) {
+    req.usuario = undefined;
+  }
+  next();
+};
+
+module.exports = { authenticate, authenticateOpcional, requireRole };

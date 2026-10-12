@@ -60,4 +60,24 @@ const uploadComprobante = multer({
   }
 });
 
-module.exports = { upload, uploadComprobante, UPLOAD_ROOT };
+// Comprobante del pago mensual de un plan VIP (uno por cobro del mes)
+const uploadComprobantePlan = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const dir = path.join(UPLOAD_ROOT, 'comprobantes', `plan-pago-${parseInt(req.params.id) || 0}`);
+      fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+      const ext = (path.extname(file.originalname) || '.jpg').toLowerCase();
+      cb(null, `comprobante-${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`);
+    }
+  }),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    if (/^(image\/(jpeg|png|webp|gif)|application\/pdf)$/.test(file.mimetype)) return cb(null, true);
+    cb(new Error('El comprobante debe ser una imagen (jpg, png, webp) o un PDF'));
+  }
+});
+
+module.exports = { upload, uploadComprobante, uploadComprobantePlan, UPLOAD_ROOT };

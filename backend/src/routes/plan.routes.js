@@ -17,4 +17,10 @@ router.get('/suscripciones', planController.listarSuscripciones);
 router.post('/suscripciones', planController.crearSuscripcion);
 router.put('/suscripciones/:id/cancelar', planController.cancelarSuscripcion);
 
+// Cobros mensuales de los planes VIP
+router.post('/cobros', planController.generarCobros);
+router.get('/pagos', planController.listarPagos);
+router.put('/pagos/:id/verificar', planController.verificarPago);
+router.post('/suscripciones/:id/pagos', planController.registrarPago);
+
 module.exports = router;

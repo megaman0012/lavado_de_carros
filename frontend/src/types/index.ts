@@ -262,6 +262,8 @@ export interface Reserva {
   // contado = se paga la reserva; credito = va al corte mensual de la empresa
   forma_cobro?: 'contado' | 'credito';
   id_corte?: number | null;
+  // Reservada con plan VIP (ocupa primero los cupos apartados)
+  vip?: boolean;
   cliente?: Cliente;
   vehiculo?: Vehiculo;
   tipoServicio?: TipoServicio;
@@ -303,6 +305,9 @@ export interface ResumenPeriodo {
   no_asistio: number;
   // A domicilio: visitas que no se pudieron hacer y lo que se cobró por ellas
   visitas_fallidas?: number;
+  // Mensualidades de planes VIP cobradas en el período (aparte del cobrado por lavados)
+  cobrado_planes?: number;
+  pagos_planes?: number;
   cargos_visitas_fallidas?: number;
   calificacion_promedio: number | null;
   calificaciones_total: number;
@@ -317,26 +322,63 @@ export interface Calificacion {
   createdAt: string;
 }
 
+// sitio = de un edificio (lavados compartidos); personal = VIP de una persona
 export interface Plan {
   id: number;
   nombre: string;
   descripcion?: string | null;
+  tipo?: 'sitio' | 'personal';
   precio_mensual: number;
   lavados_incluidos: number;
-  modalidad: 'expreso' | 'profunda';
-  estado: 'activo' | 'inactivo';
+  modalidad: 'expreso' | 'profunda' | 'todas';
+  descuento_pct?: number;
+  dias_anticipacion?: number | null;
+  estado?: 'activo' | 'inactivo';
 }
 
+export type EstadoPagoPlan = 'pendiente' | 'en_verificacion' | 'aprobado' | 'rechazado';
+
+// Cobro mensual de un plan VIP
+export interface PagoSuscripcion {
+  id: number;
+  id_suscripcion: number;
+  periodo: string;
+  monto: number;
+  metodo: 'efectivo' | 'transferencia';
+  estado: EstadoPagoPlan;
+  comprobante_url?: string | null;
+  referencia?: string | null;
+  motivo_rechazo?: string | null;
+  fecha_pago?: string | null;
+  suscripcion?: Suscripcion;
+}
+
+// Respuesta de /api/mi-plan
+export interface MiPlan {
+  es_empresa: boolean;
+  suscripcion: Suscripcion | null;
+  restantes: number;
+  dias_anticipacion: number;
+  planes: Plan[];
+}
+
+// Titular: un sitio (plan de sitio) o una persona (plan VIP)
 export interface Suscripcion {
   id: number;
-  id_estacionamiento: number;
+  id_estacionamiento?: number | null;
+  id_cliente?: number | null;
   id_plan: number;
   fecha_inicio: string;
   fecha_cancelacion?: string | null;
   estado: 'activa' | 'cancelada';
   plan?: Plan;
-  estacionamiento?: { id: number; nombre: string; ciudad?: { id: number; nombre: string } };
+  estacionamiento?: { id: number; nombre: string; ciudad?: { id: number; nombre: string } } | null;
+  cliente?: { id: number; nombre: string; email?: string | null; telefono?: string | null } | null;
+  pagos?: PagoSuscripcion[];
   uso_mes_actual?: number;
+  // Solo VIP: el cobro del mes en curso y si está pagado
+  pago_mes_actual?: PagoSuscripcion | null;
+  vigente?: boolean;
 }
 
 // ==================== EMPRESAS ====================

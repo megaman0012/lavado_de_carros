@@ -112,7 +112,7 @@ const NO_LAVADO = ['cancelada', 'no_asistio', 'fallida'];
 const calcularResumenPeriodo = async (desde, hasta, ciudad = null) => {
   const enRango = { fecha: { gte: desde, lte: hasta }, ...deCiudad(ciudad) };
 
-  const [hechas, fallidas, canceladas, noAsistio, cobrado, calificaciones] = await Promise.all([
+  const [hechas, fallidas, canceladas, noAsistio, cobrado, calificaciones, cobradoPlanes] = await Promise.all([
     prisma.reserva.aggregate({
       where: { ...enRango, estado: { notIn: NO_LAVADO } },
       _count: true,
@@ -133,6 +133,12 @@ const calcularResumenPeriodo = async (desde, hasta, ciudad = null) => {
       where: { reserva: { is: enRango } },
       _avg: { puntuacion: true },
       _count: true
+    }),
+    // Mensualidades de planes VIP: son de todo el país, no de una ciudad
+    ciudad ? null : prisma.pagoSuscripcion.aggregate({
+      where: { estado: 'aprobado', fecha_pago: { gte: desde, lt: finDelDia(hasta) } },
+      _sum: { monto: true },
+      _count: true
     })
   ]);
 
@@ -152,6 +158,9 @@ const calcularResumenPeriodo = async (desde, hasta, ciudad = null) => {
     canceladas,
     no_asistio: noAsistio,
     visitas_fallidas: fallidas._count || 0,
+    // Aparte de "cobrado" (que es por lavado): lo que entró por planes VIP
+    cobrado_planes: cobradoPlanes?._sum.monto || 0,
+    pagos_planes: cobradoPlanes?._count || 0,
     cargos_visitas_fallidas: cargosFallidas,
     calificacion_promedio: calificaciones._avg.puntuacion
       ? Math.round(calificaciones._avg.puntuacion * 10) / 10

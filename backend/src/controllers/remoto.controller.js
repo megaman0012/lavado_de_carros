@@ -383,11 +383,19 @@ const listarParametros = async (req, res) => {
 };
 
 // Validación por clave: un parámetro mal cargado no puede romper los cobros
+const entero = (min, max) => (v) => {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= min && n <= max ? String(n) : null;
+};
 const VALIDADORES = {
   [remotoService.PARAM_FALLIDA]: (v) => {
     const n = Number(v);
     return Number.isFinite(n) && n >= 0 && n <= 100 ? String(n) : null;
-  }
+  },
+  // Prioridad VIP y anticipación de las reservas (ver beneficios.service.js)
+  'reservas.dias_anticipacion': entero(1, 365),
+  'vip.cupos_reservados': entero(0, 50),
+  'vip.horas_liberacion': entero(0, 720)
 };
 
 const guardarParametro = async (req, res) => {
@@ -396,7 +404,7 @@ const guardarParametro = async (req, res) => {
     const validar = VALIDADORES[clave];
     if (!validar) return res.status(404).json({ success: false, message: 'Parámetro desconocido' });
     const valor = validar(req.body.valor);
-    if (valor === null) return res.status(400).json({ success: false, message: 'Valor inválido (porcentaje de 0 a 100)' });
+    if (valor === null) return res.status(400).json({ success: false, message: 'Valor fuera de rango para este parámetro' });
     const parametro = await prisma.parametro.upsert({
       where: { clave },
       update: { valor },

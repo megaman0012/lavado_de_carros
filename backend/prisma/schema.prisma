@@ -87,6 +87,7 @@ model Cliente {
   cortes           CorteEmpresa[]
   sitiosPrivados   Estacionamiento[]
   visitas          Visita[]
+  suscripciones    Suscripcion[]
 }
 
 // Precio pactado con una empresa para un servicio y tipo de vehículo. Manda
@@ -317,35 +318,74 @@ model Estacionamiento {
   @@index([id_ciudad])
 }
 
-// ==================== PLANES PARA EDIFICIOS/CONDOMINIOS ====================
-// El plan se contrata para un estacionamiento (edificio/condominio): cubre
-// N lavados expreso al mes compartidos entre todos los residentes que reservan ahí.
+// ==================== PLANES ====================
+// Dos clases de plan (Plan.tipo):
+//   sitio    lo contrata un edificio/condominio: N lavados al mes compartidos
+//            entre todos los residentes que reservan ahí.
+//   personal el VIP: lo contrata una persona y lo paga cada mes. Da N lavados
+//            al mes, un % de descuento en lo demás y prioridad de horario
+//            (reservar con más anticipación y cupos apartados para VIP).
+// Al reservar se aplica primero el plan personal y después el del sitio.
 model Plan {
   id                Int      @id @default(autoincrement())
   nombre            String
   descripcion       String?
+  tipo              String   @default("sitio") // sitio | personal
   precio_mensual    Float
-  lavados_incluidos Int // total del sitio, por mes
-  modalidad         String   @default("expreso") // expreso | profunda
+  lavados_incluidos Int // por mes: del sitio entero, o de la persona
+  modalidad         String   @default("expreso") // expreso | profunda | todas
+  // Solo personal: % de descuento en servicios no incluidos y en adicionales
+  descuento_pct     Float    @default(0)
+  // Solo personal: hasta cuántos días adelante puede reservar (null = como todos)
+  dias_anticipacion Int?
   estado            String   @default("activo")
   createdAt         DateTime @default(now())
 
   suscripciones Suscripcion[]
 }
 
+// Titular: un sitio (plan de sitio) o una persona (plan personal / VIP).
+// La de una persona solo da beneficios en los meses pagados (PagoSuscripcion
+// aprobado del mes de la reserva).
 model Suscripcion {
   id                 Int       @id @default(autoincrement())
-  id_estacionamiento Int
+  id_estacionamiento Int?
+  id_cliente         Int?
   id_plan            Int
   fecha_inicio       DateTime  @default(now())
   fecha_cancelacion  DateTime?
   estado             String    @default("activa") // activa | cancelada
 
-  estacionamiento Estacionamiento @relation(fields: [id_estacionamiento], references: [id])
-  plan            Plan            @relation(fields: [id_plan], references: [id])
+  estacionamiento Estacionamiento? @relation(fields: [id_estacionamiento], references: [id])
+  cliente         Cliente?         @relation(fields: [id_cliente], references: [id])
+  plan            Plan             @relation(fields: [id_plan], references: [id])
   reservas        Reserva[]
+  pagos           PagoSuscripcion[]
 
   @@index([id_estacionamiento])
+  @@index([id_cliente])
+}
+
+// Cobro mensual de un plan personal. Mismo circuito que el pago de una reserva:
+// el cliente sube el comprobante (en_verificacion) y un operador lo aprueba;
+// también se puede registrar directo desde el panel.
+model PagoSuscripcion {
+  id              Int       @id @default(autoincrement())
+  id_suscripcion  Int
+  periodo         String // "2026-10"
+  monto           Float
+  metodo          String    @default("transferencia") // efectivo | transferencia
+  estado          String    @default("pendiente") // pendiente | en_verificacion | aprobado | rechazado
+  comprobante_url String?
+  referencia      String?
+  motivo_rechazo  String?
+  fecha_pago      DateTime?
+  createdAt       DateTime  @default(now())
+
+  suscripcion Suscripcion @relation(fields: [id_suscripcion], references: [id])
+
+  @@unique([id_suscripcion, periodo])
+  @@index([estado])
 }
 
 model Plaza {
@@ -473,6 +513,8 @@ model Reserva {
   precio_final       Float?
   // contado = se paga la reserva (persona); credito = va al corte mensual de la empresa
   forma_cobro        String   @default("contado")
+  // Reservada con plan VIP vigente: ocupa primero los cupos apartados para VIP
+  vip                Boolean  @default(false)
   id_corte           Int?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt

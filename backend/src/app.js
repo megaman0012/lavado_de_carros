@@ -102,6 +102,7 @@ const ciudadRoutes = require('./routes/ciudad.routes');
 const usuarioRoutes = require('./routes/usuario.routes');
 const empresaRoutes = require('./routes/empresa.routes');
 const remotoRoutes = require('./routes/remoto.routes');
+const vipRoutes = require('./routes/vip.routes');
 
 // Techo general de la API. Va antes de montar las rutas para cubrirlas a todas;
 // los endpoints sensibles llevan además su propio límite, más estricto.
@@ -135,6 +136,7 @@ app.use('/api/sectores', remotoRoutes.sectores);
 app.use('/api/unidades', remotoRoutes.unidades);
 app.use('/api/visitas', remotoRoutes.visitas);
 app.use('/api/parametros', remotoRoutes.parametros);
+app.use('/api/mi-plan', vipRoutes);
 
 // Evidencias fotográficas (estático)
 // Los archivos subidos (evidencia fotográfica, comprobantes de transferencia) se

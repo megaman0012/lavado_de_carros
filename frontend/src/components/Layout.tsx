@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, CalendarDays, CalendarCheck, Droplets, Car,
-  Users, MapPin, Wrench, BarChart3, LogOut, Menu, X, Home, Building2, BadgeCheck, Map, UserCog, Briefcase, Truck
+  Users, MapPin, Wrench, BarChart3, LogOut, Menu, X, Home, Building2, BadgeCheck, Map, UserCog, Briefcase, Truck, Crown
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth, rutaInicio } from '../context/AuthContext';
@@ -19,6 +19,8 @@ interface MenuItem {
   nacional?: boolean;
   // Solo para la cuenta de una empresa (gestor de flota)
   empresa?: boolean;
+  // Solo para personas (no empresas)
+  persona?: boolean;
 }
 
 const menuItems: MenuItem[] = [
@@ -28,6 +30,7 @@ const menuItems: MenuItem[] = [
   { to: '/reservar', label: 'Nueva Reserva', icon: <Droplets size={20} />, roles: ['admin', 'operador', 'cliente'] },
   { to: '/mis-reservas', label: 'Mis Reservas', icon: <Car size={20} />, roles: ['cliente'] },
   { to: '/mi-flota', label: 'Mi flota', icon: <Truck size={20} />, roles: ['cliente'], empresa: true },
+  { to: '/mi-plan', label: 'Mi plan VIP', icon: <Crown size={20} />, roles: ['cliente'], persona: true },
   { to: '/mis-trabajos', label: 'Mis Trabajos', icon: <Wrench size={20} />, roles: ['lavador'] },
   { to: '/clientes', label: 'Clientes', icon: <Users size={20} />, roles: ['admin', 'operador'] },
   { to: '/estacionamientos', label: 'Estacionamientos', icon: <MapPin size={20} />, roles: ['admin', 'operador'] },
@@ -51,7 +54,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const nacional = usuario?.rol === 'admin' || (usuario?.rol === 'operador' && !usuario.ciudad);
   const esEmpresa = usuario?.cliente?.tipo === 'empresa';
   const itemsVisibles = menuItems.filter((m) =>
-    usuario && m.roles.includes(usuario.rol) && (!m.nacional || nacional) && (!m.empresa || esEmpresa));
+    usuario && m.roles.includes(usuario.rol) && (!m.nacional || nacional) && (!m.empresa || esEmpresa) && (!m.persona || !esEmpresa));
 
   // Comprobantes esperando validación: se refresca al navegar para que el
   // operador vea al toque cuando un cliente envía uno.
@@ -59,10 +62,12 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const interno = usuario?.rol === 'admin' || usuario?.rol === 'operador';
   useEffect(() => {
     if (!interno) return;
-    api.get('/pagos/pendientes')
-      .then((r) => setPagosPendientes(r.data.length))
-      .catch(() => setPagosPendientes(0));
-  }, [interno, location.pathname]);
+    // También las mensualidades VIP por aprobar (solo las ve lo nacional)
+    Promise.all([
+      api.get('/pagos/pendientes').then((r) => r.data.length).catch(() => 0),
+      nacional ? api.get('/planes/pagos', { params: { estado: 'en_verificacion' } }).then((r) => r.data.length).catch(() => 0) : 0
+    ]).then(([a, b]) => setPagosPendientes(a + b));
+  }, [interno, nacional, location.pathname]);
   const inicio = rutaInicio(usuario?.rol);
 
   const handleLogout = () => {

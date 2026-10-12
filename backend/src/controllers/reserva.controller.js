@@ -12,6 +12,29 @@ const cotizacionService = require('../services/cotizacion.service');
 const fechas = require('../utils/fechas');
 const alcance = require('../utils/alcance');
 const remotoService = require('../services/remoto.service');
+const beneficios = require('../services/beneficios.service');
+
+/**
+ * Plan VIP del cliente para esta reserva:
+ *   vigente     el del mes de la reserva (pagado): da los lavados incluidos y
+ *               el descuento. null si ese mes no está pagado.
+ *   prioridad   ser VIP hoy o ese mes: reservar con más anticipación y usar los
+ *               cupos apartados. Se separa de lo anterior para que un VIP pueda
+ *               reservar a fin de mes para el mes siguiente que aún no pagó.
+ * Un cliente reserva hasta N días adelante (más si su plan lo da); el panel, sin límite.
+ */
+const vipYAnticipacion = async (req, cliente, dia) => {
+  if (cliente.tipo !== 'persona') return { vigente: null, prioridad: null };
+  const vigente = await beneficios.planPersonalVigente(cliente.id, dia);
+  const prioridad = vigente || await beneficios.planPersonalVigente(cliente.id, fechas.hoy());
+  if (req.usuario.rol === 'cliente') {
+    const dias = await beneficios.diasAnticipacion(prioridad);
+    if (dia > fechas.sumarDias(fechas.hoy(), dias)) {
+      throw Object.assign(new Error(`Puede reservar hasta ${dias} días adelante`), { statusCode: 400 });
+    }
+  }
+  return { vigente, prioridad };
+};
 
 const incluir = {
   cliente: { select: { id: true, nombre: true, telefono: true, email: true } },
@@ -74,8 +97,10 @@ const crearADomicilio = async (req, res, { cliente, vehiculo, cotizacion }) => {
   const sector = await remotoService.sectorActivo(domicilio.id_sector);
   if (!alcance.puedeVer(req.usuario, sector.id_ciudad)) return alcance.fueraDeAlcance(res);
   const dia = validarCuando(req.body.fecha, req.body.hora_inicio);
+  const { vigente, prioridad } = await vipYAnticipacion(req, cliente, dia);
 
   const reserva = await prisma.$transaction(async (tx) => {
+    const ben = await beneficios.aplicar({ db: tx, vigente, sitio: null, modalidad: servicio.modalidad, dia, cotizacion });
     const visita = await remotoService.crearVisita({
       db: tx, dia, horaInicio: req.body.hora_inicio, duracionMin: cotizacion.duracion_min,
       idCliente: cliente.id, domicilio
@@ -89,13 +114,16 @@ const crearADomicilio = async (req, res, { cliente, vehiculo, cotizacion }) => {
         id_tipo_servicio: servicio.id,
         id_ciudad: sector.id_ciudad,
         id_visita: visita.id,
+        id_suscripcion: ben.id_suscripcion,
+        vip: !!prioridad,
         modalidad: 'remoto',
         fecha: dia,
         hora_inicio: visita.hora_inicio,
         hora_fin: visita.hora_fin,
         estado: 'solicitada',
         observaciones: req.body.observaciones?.trim() || null,
-        precio_final: cotizacion.total + visita.recargo,
+        // El recargo es el traslado: se cobra entero aunque haya plan
+        precio_final: beneficios.redondear(ben.precio_servicio + ben.precio_adicionales + visita.recargo),
         forma_cobro: cliente.tipo === 'empresa' ? 'credito' : 'contado',
         adicionales: {
           create: cotizacion.adicionales.map((a) => ({
@@ -122,6 +150,7 @@ const crearADomicilio = async (req, res, { cliente, vehiculo, cotizacion }) => {
       `${servicio.nombre} para ${cotizacion.tipoVehiculo.nombre} a domicilio (${visita.codigo})`,
       `sector ${visita.sector.nombre}, equipo ${visita.unidad.nombre}`,
       visita.recargo > 0 && `recargo $${visita.recargo.toFixed(2)}`,
+      ...ben.notas,
       cotizacion.tarifa_empresa && 'tarifa de empresa',
       cliente.tipo === 'empresa' && 'a crédito (corte mensual)',
       cotizacion.adicionales.length > 0 && `adicionales: ${cotizacion.adicionales.map((a) => a.nombre).join(', ')}`
@@ -238,6 +267,10 @@ const crear = async (req, res) => {
       });
     }
     const horaFinStr = agendaService.aHHMM(finMin);
+    const { vigente, prioridad } = await vipYAnticipacion(req, cliente, dia);
+    // El panel puede usar los cupos apartados para VIP (atiende por teléfono)
+    const prioritario = !!prioridad || req.usuario.rol !== 'cliente';
+    const configVip = await agendaService.configVip();
 
     // TRANSACCIÓN serializable: dos clientes pidiendo el último cupo a la vez no
     // pueden quedarse ambos con él; el segundo recibe 409 y elige otra franja.
@@ -251,40 +284,27 @@ const crear = async (req, res) => {
         db: tx
       });
       const capacidad = await agendaService.obtenerCapacidad(servicio.modalidad, estacionamiento, tx);
+      const ocupadasVip = configVip.reservados > 0
+        ? await agendaService.contarOcupaciones({
+          fecha: dia, horaInicio: hora_inicio, horaFin: horaFinStr, modalidad: servicio.modalidad, estacionamiento, db: tx, soloVip: true
+        })
+        : 0;
+      const libres = agendaService.cuposLibres({
+        capacidad, ocupadas, ocupadasVip, esVip: prioritario, reservados: configVip.reservados,
+        protegida: agendaService.franjaProtegida(dia, inicioMin, configVip.horas)
+      });
 
-      if (ocupadas >= capacidad) {
+      if (libres <= 0) {
         throw Object.assign(
           new Error('Franja no disponible. Por favor elija otro horario.'),
           { statusCode: 409 }
         );
       }
 
-      // Plan del edificio/condominio: si el estacionamiento tiene una suscripción activa
-      // para esta modalidad y aún hay cupo este mes, el servicio principal sale gratis.
-      // Los adicionales se cobran siempre: el plan no los incluye.
-      let id_suscripcion = null;
-      let precioServicio = cotizacion.precio_servicio;
-      let planCubre = null;
-      if (estacionamiento.tipo === 'aliado') {
-        const suscripcion = await tx.suscripcion.findFirst({
-          where: { id_estacionamiento: parseInt(id_estacionamiento), estado: 'activa', plan: { modalidad: servicio.modalidad } },
-          include: { plan: true }
-        });
-        if (suscripcion) {
-          const usoMes = await tx.reserva.count({
-            where: {
-              id_suscripcion: suscripcion.id,
-              estado: { not: 'cancelada' },
-              fecha: { gte: fechas.inicioMes(dia) }
-            }
-          });
-          if (usoMes < suscripcion.plan.lavados_incluidos) {
-            id_suscripcion = suscripcion.id;
-            precioServicio = 0;
-            planCubre = suscripcion.plan.nombre;
-          }
-        }
-      }
+      // Planes: primero el VIP de la persona, después el del edificio
+      const ben = await beneficios.aplicar({
+        db: tx, vigente, sitio: estacionamiento, modalidad: servicio.modalidad, dia, cotizacion
+      });
 
       const nueva = await tx.reserva.create({
         data: {
@@ -294,14 +314,15 @@ const crear = async (req, res) => {
           id_tipo_servicio: servicio.id,
           id_estacionamiento: estacionamiento.id,
           id_ciudad: estacionamiento.id_ciudad,
-          id_suscripcion,
+          id_suscripcion: ben.id_suscripcion,
+          vip: !!prioridad,
           modalidad: servicio.modalidad,
           fecha: dia,
           hora_inicio,
           hora_fin: horaFinStr,
           estado: 'solicitada',
           observaciones: observaciones?.trim() || null,
-          precio_final: precioServicio + cotizacion.precio_adicionales,
+          precio_final: beneficios.redondear(ben.precio_servicio + ben.precio_adicionales),
           // La empresa no paga lavado por lavado: va a su corte mensual
           forma_cobro: cliente.tipo === 'empresa' ? 'credito' : 'contado',
           adicionales: {
@@ -327,7 +348,7 @@ const crear = async (req, res) => {
 
       const notas = [
         `${servicio.nombre} para ${cotizacion.tipoVehiculo.nombre}`,
-        planCubre && `cubierto por el plan: ${planCubre}`,
+        ...ben.notas,
         cotizacion.tarifa_empresa && 'tarifa de empresa',
         cliente.tipo === 'empresa' && 'a crédito (corte mensual)',
         cotizacion.adicionales.length > 0 && `adicionales: ${cotizacion.adicionales.map((a) => a.nombre).join(', ')}`

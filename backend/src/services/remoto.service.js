@@ -22,6 +22,7 @@
 const prisma = require('../db');
 const fechas = require('../utils/fechas');
 const { aMinutos, aHHMM, solapan } = require('./agenda.service');
+const parametros = require('../utils/parametros');
 
 const error = (statusCode, mensaje) => Object.assign(new Error(mensaje), { statusCode });
 
@@ -30,10 +31,7 @@ const OCUPAN = ['programada', 'en_camino', 'en_sitio', 'completada'];
 
 const PARAM_FALLIDA = 'remoto.cargo_visita_fallida_pct';
 
-const leerParametro = async (clave, porDefecto, db = prisma) => {
-  const p = await db.parametro.findUnique({ where: { clave } });
-  return p ? p.valor : porDefecto;
-};
+const leerParametro = parametros.leer;
 
 const pctVisitaFallida = async (db = prisma) => {
   const n = Number(await leerParametro(PARAM_FALLIDA, '100', db));

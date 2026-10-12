@@ -2,6 +2,44 @@
 
 ## [Sin publicar]
 
+### 2026-10-12 (4) — Planes VIP con cobro mensual (fase 4, pendiente de desplegar)
+
+#### Agregado
+- **Plan VIP** (`Plan.tipo = 'personal'`): lo contrata una persona y se paga
+  cada mes. Configurable: precio, lavados incluidos al mes, qué servicios
+  incluye (expreso, profunda o todos), **% de descuento** en lo demás y
+  **días de anticipación** para reservar.
+- **Cobro mensual** (`PagoSuscripcion`): al suscribirse queda el cobro del mes;
+  el cliente sube el comprobante desde **Mi plan VIP** y se aprueba en **Pagos
+  por verificar** (o el panel registra el pago directo). "Generar cobros del
+  mes" crea los del mes para todos los VIP activos, sin duplicar.
+- **Los beneficios rigen solo en los meses pagados.** Lavados incluidos a $0;
+  agotados, el descuento (también en los adicionales). El recargo a domicilio
+  se cobra entero. Al reservar se aplica primero el plan VIP y después el del
+  edificio. Cancelar el plan respeta lo ya pagado del mes.
+- **Prioridad de horario:** un VIP reserva hasta los días de su plan (los demás,
+  14, configurable) y puede usar los **cupos apartados para VIP**
+  (`vip.cupos_reservados`, apagado por defecto) hasta `vip.horas_liberacion`
+  antes de la franja. Nunca se aparta el último cupo de un sitio. La prioridad
+  sigue a quien es VIP hoy: puede reservar el mes que viene aunque no lo haya pagado
+  todavía (el precio con beneficios se aplica solo si ese mes está pagado).
+- Pantalla **Planes** con pestañas VIP / Edificios, parámetros de prioridad y la
+  lista de clientes VIP con el estado del mes. Pantalla **Mi plan VIP** del
+  cliente. La reserva del cliente muestra el precio con su beneficio.
+- Reportes: lo cobrado por mensualidades VIP aparte del cobrado por lavados.
+- 15 pruebas nuevas (282 en total).
+
+#### Corregido
+- **Los lavados usados de un plan de edificio sumaban también los de los meses
+  siguientes**: el conteo del mes no tenía fecha de fin. Una reserva hecha con
+  anticipación para el mes que viene consumía el cupo del mes en curso.
+
+#### Migración
+`backend/prisma/migraciones/2026-10-12_vip.sql`: columnas y tabla nuevas; los
+planes y suscripciones existentes quedan como de edificio. Parámetros
+`reservas.dias_anticipacion` (14), `vip.cupos_reservados` (0) y
+`vip.horas_liberacion` (24). Probada sobre una copia de producción.
+
 ### 2026-10-12 (3) — Lavado remoto a domicilio (fase 3, pendiente de desplegar)
 
 #### Agregado

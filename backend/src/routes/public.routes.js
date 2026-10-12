@@ -13,5 +13,7 @@ router.get('/ciudades', publicController.ciudades);
 // Sectores con lavado a domicilio (hay equipo móvil activo en la ciudad)
 router.get('/sectores', require('../controllers/remoto.controller').sectoresPublicos);
 router.get('/estacionamientos', publicController.estacionamientos);
+// Planes VIP que se ofrecen
+router.get('/planes-vip', require('../controllers/vip.controller').publicos);
 
 module.exports = router;

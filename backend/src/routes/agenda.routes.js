@@ -5,10 +5,10 @@
 const express = require('express');
 const router = express.Router();
 const agendaController = require('../controllers/agenda.controller');
-const { authenticate, requireRole } = require('../middleware/auth.middleware');
+const { authenticate, authenticateOpcional, requireRole } = require('../middleware/auth.middleware');
 
 // Disponibilidad: pública para que el cliente vea franjas al reservar
-router.get('/disponibilidad', agendaController.disponibilidad);
+router.get('/disponibilidad', authenticateOpcional, agendaController.disponibilidad);
 
 // Vista del día y bloqueos manuales: solo personal interno
 router.get('/', authenticate, requireRole('admin', 'operador', 'lavador'), agendaController.vistaDia);

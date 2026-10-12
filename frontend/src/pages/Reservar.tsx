@@ -7,7 +7,7 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Logo from '../components/Logo';
 import FormVehiculo, { IconoTipo, SelectorTipoVehiculo, useTiposVehiculo } from '../components/FormVehiculo';
-import { TipoServicio, Estacionamiento, Vehiculo, FranjaDisponibilidad, ServicioAdicional, Ciudad, Sector, DatosDomicilio } from '../types';
+import { TipoServicio, Estacionamiento, Vehiculo, FranjaDisponibilidad, ServicioAdicional, Ciudad, Sector, DatosDomicilio, MiPlan } from '../types';
 import FormDomicilio, { DOMICILIO_VACIO, domicilioCompleto } from '../components/FormDomicilio';
 import { hoyISO, fechaLarga, proximosDias, partesDia } from '../utils/fechas';
 import { tarifaPara, dinero, totales } from '../utils/catalogo';
@@ -41,6 +41,7 @@ const ciudadGuardada = (): number | null => {
     return null;
   }
 };
+// Días a la vista: los que se pueden reservar (14 por defecto; un VIP, los de su plan)
 const DIAS_CARTELERA = 14;
 
 const Reservar: React.FC = () => {
@@ -105,7 +106,22 @@ const Reservar: React.FC = () => {
   const domicilioListo = aDomicilio && domicilioCompleto(domicilio);
   const lugarListo = aDomicilio ? domicilioListo : !!estacionamientoId;
   const recargo = aDomicilio ? sectorElegido?.recargo ?? 0 : 0;
-  const precioTotal = total.precio + recargo;
+
+  // Plan VIP: lavados incluidos, descuento y más días para reservar. Es un
+  // estimado con el mes en curso; el precio final lo calcula el servidor.
+  const [miPlan, setMiPlan] = useState<MiPlan | null>(null);
+  useEffect(() => {
+    if (!esCliente || esEmpresa) return;
+    api.get('/mi-plan').then((r) => setMiPlan(r.data)).catch(() => {});
+  }, [esCliente, esEmpresa]);
+  const planVip = miPlan?.suscripcion?.vigente ? miPlan.suscripcion.plan || null : null;
+  const descuento = (planVip?.descuento_pct ?? 0) / 100;
+  const incluido = !!planVip && !!servicio && (planVip.modalidad === 'todas' || planVip.modalidad === servicio.modalidad) &&
+    (miPlan?.restantes ?? 0) > 0;
+  const precioServicioVip = !tarifa ? 0 : incluido ? 0 : Math.round(tarifa.precio * (1 - descuento) * 100) / 100;
+  const precioExtrasVip = Math.round(extras.reduce((t, a) => t + a.precio, 0) * (1 - descuento) * 100) / 100;
+  const diasCartelera = (miPlan?.dias_anticipacion ?? DIAS_CARTELERA - 1) + 1;
+  const precioTotal = (planVip ? precioServicioVip + precioExtrasVip : total.precio) + recargo;
 
   // ---------- Paso en la URL ----------
   // Hasta qué paso se puede llegar con lo elegido (al recargar en ?paso=5 sin
@@ -584,7 +600,7 @@ const Reservar: React.FC = () => {
             </div>
             {/* Cartelera de días */}
             <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
-              {proximosDias(DIAS_CARTELERA).map((d) => {
+              {proximosDias(diasCartelera).map((d) => {
                 const p = partesDia(d);
                 const sel = d === fecha;
                 return (
@@ -653,7 +669,10 @@ const Reservar: React.FC = () => {
               </div>
               <div className="border-t border-dashed border-slate-200 pt-3 flex justify-between gap-3">
                 <span>{servicio.nombre} <span className="text-slate-400">({tarifa.duracion_min} min)</span></span>
-                <span>{dinero(tarifa.precio)}</span>
+                <span>
+                  {planVip && precioServicioVip !== tarifa.precio && <span className="text-slate-400 line-through mr-1">{dinero(tarifa.precio)}</span>}
+                  {dinero(planVip ? precioServicioVip : tarifa.precio)}
+                </span>
               </div>
               {extras.map((a) => (
                 <div key={a.id} className="flex justify-between gap-3 text-slate-600">
@@ -661,6 +680,13 @@ const Reservar: React.FC = () => {
                   <span>{dinero(a.precio)}</span>
                 </div>
               ))}
+              {planVip && (
+                <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                  {incluido
+                    ? `Incluido en tu plan ${planVip.nombre} (te quedan ${miPlan?.restantes} este mes).`
+                    : `Tu plan ${planVip.nombre} te da ${planVip.descuento_pct}% de descuento${extras.length ? ', también en los adicionales' : ''}.`}
+                </p>
+              )}
               {recargo > 0 && (
                 <div className="flex justify-between gap-3 text-slate-600">
                   <span>+ Recargo a domicilio</span>
@@ -680,7 +706,7 @@ const Reservar: React.FC = () => {
                   El equipo sale a tu dirección antes de la hora elegida; te avisamos cuando vaya en camino.
                   Ten lista la toma de agua y de luz: si no podemos lavar, la visita se cobra.
                 </p>
-              ) : (
+              ) : planVip ? null : (
                 <p className="text-xs text-slate-400">
                   Si tu edificio tiene un plan contratado, el servicio principal puede salir sin costo; lo verás en el total al confirmar.
                 </p>

@@ -81,7 +81,13 @@ const Reportes: React.FC = () => {
   const tarjetas = resumen ? [
     { titulo: 'Lavados', valor: resumen.lavados, nota: 'sin contar cancelados', icono: <BarChart3 className="text-sky-600" />, fondo: 'bg-sky-50' },
     { titulo: 'Facturado', valor: moneda(resumen.facturado), nota: 'suma de los lavados del mes', icono: <Receipt className="text-indigo-600" />, fondo: 'bg-indigo-50' },
-    { titulo: 'Cobrado', valor: moneda(resumen.cobrado), nota: 'pagos aprobados en el mes', icono: <DollarSign className="text-green-600" />, fondo: 'bg-green-50' },
+    {
+      titulo: 'Cobrado', valor: moneda(resumen.cobrado),
+      nota: (resumen.cobrado_planes ?? 0) > 0
+        ? `pagos de lavados · + ${moneda(resumen.cobrado_planes ?? 0)} de ${resumen.pagos_planes} mensualidad(es) VIP`
+        : 'pagos aprobados en el mes',
+      icono: <DollarSign className="text-green-600" />, fondo: 'bg-green-50'
+    },
     { titulo: 'Ticket promedio', valor: resumen.ticket_promedio != null ? moneda(resumen.ticket_promedio) : '—', icono: <TrendingUp className="text-purple-600" />, fondo: 'bg-purple-50' },
     {
       titulo: 'Cancelados', valor: resumen.canceladas,

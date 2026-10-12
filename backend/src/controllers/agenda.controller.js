@@ -8,6 +8,18 @@ const agendaService = require('../services/agenda.service');
 const fechas = require('../utils/fechas');
 const alcance = require('../utils/alcance');
 const remotoService = require('../services/remoto.service');
+const beneficios = require('../services/beneficios.service');
+
+// ¿Quien pregunta ve los cupos apartados para VIP? El panel siempre; un
+// cliente, si tiene plan VIP pagado para ese mes.
+const veCuposVip = async (usuario, fecha) => {
+  if (!usuario) return false;
+  if (['admin', 'operador'].includes(usuario.rol)) return true;
+  const dia = fechas.fechaDia(fecha);
+  if (usuario.rol !== 'cliente' || !dia) return false;
+  return !!(await beneficios.planPersonalVigente(usuario.id_cliente, dia) ||
+    await beneficios.planPersonalVigente(usuario.id_cliente, fechas.hoy()));
+};
 
 // GET /api/agenda/disponibilidad?fecha=&modalidad=&duracion_min=&id_estacionamiento=
 // A domicilio: modalidad=remoto&id_sector= (la capacidad son los equipos móviles)
@@ -30,7 +42,8 @@ const disponibilidad = async (req, res) => {
       fecha,
       modalidad,
       duracionMin: parseInt(duracion_min) || 60,
-      idEstacionamiento: id_estacionamiento
+      idEstacionamiento: id_estacionamiento,
+      esVip: await veCuposVip(req.usuario, fecha)
     });
 
     res.json({ success: true, data: resultado });

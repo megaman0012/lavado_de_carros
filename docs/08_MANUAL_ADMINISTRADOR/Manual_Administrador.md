@@ -7,7 +7,8 @@ operador por ciudad, pantallas **Ciudades** y **Usuarios**, sitios de tipo
 taller, capacidad y bloqueos por ciudad (sección 6) y reportes por ciudad
 (sección 9). **Clientes empresa** (sección 1.3): flota, tarifas pactadas,
 parqueadero privado y cobro a crédito con **corte mensual**. **Lavado a domicilio**
-(sección 1.4): sectores, equipos móviles, visitas y cargo por visita fallida.
+(sección 1.4): sectores, equipos móviles, visitas y cargo por visita fallida. **Planes VIP**
+(sección 1.5) con cobro mensual, descuento y prioridad de horario.
 
 **Novedades de la 2.1:** vehículos de cada cliente visibles desde Clientes
 (sección 2.1), Dashboard y Reportes ahora distintos y con filtro por mes
@@ -148,6 +149,32 @@ cuando se completan sus lavados.
 **Productividad** (por mes): visitas, fallidas, carros, % del tiempo del
 equipo que se va en traslados, recargos e ingresos por equipo y por sector, y
 las causas de las visitas fallidas.
+
+### 1.5 Planes VIP (desde el 2026-10-12)
+
+Pantalla **Planes → VIP (personas)** (admin u operador nacional). Un plan VIP
+es de una persona y se paga **cada mes**. Se configura: precio, lavados
+incluidos al mes (puede ser 0 si es solo descuento), qué servicios incluye,
+**% de descuento** y **días de anticipación**.
+
+| Regla | Detalle |
+|---|---|
+| Cuándo rige | Solo en los **meses pagados** (mensualidad aprobada). Sin pagar, el cliente paga precio normal |
+| Precio | Lavados incluidos a $0; agotados, el descuento. Los adicionales siempre con descuento. El recargo a domicilio, entero |
+| Orden | Primero el plan VIP de la persona; después el del edificio donde reserva |
+| Anticipación | Un cliente reserva hasta 14 días adelante (parámetro); un VIP, los días de su plan. El panel no tiene límite |
+| Cupos apartados | `vip.cupos_reservados` cupos de cada franja son solo para VIP hasta `vip.horas_liberacion` antes. **Apagado (0)** por defecto. Nunca se aparta el último cupo de un sitio |
+| Cancelar | Lo ya pagado del mes se respeta; el mes siguiente ya no se cobra |
+
+**Ciclo mensual:**
+1. A principio de mes, **Generar cobros del mes** (crea la mensualidad de cada
+   VIP activo; se puede apretar varias veces sin duplicar).
+2. El cliente transfiere y sube el comprobante en **Mi plan VIP**.
+3. Se aprueba (o rechaza con motivo) en **Pagos por verificar → Mensualidades
+   de planes VIP**. Si pagó en efectivo, se registra en la lista de clientes VIP.
+
+En Reportes, lo cobrado por mensualidades aparece aparte de lo cobrado por
+lavados (nota de la tarjeta "Cobrado").
 
 ## 2. Catálogos
 

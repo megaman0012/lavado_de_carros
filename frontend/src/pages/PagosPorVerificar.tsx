@@ -1,8 +1,80 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { BadgeCheck, Check, X, Paperclip, FileText, Inbox } from 'lucide-react';
+import { BadgeCheck, Check, X, Paperclip, FileText, Inbox, Crown } from 'lucide-react';
 import api from '../services/api';
-import { Pago } from '../types';
+import { Pago, PagoSuscripcion } from '../types';
 import { urlArchivo } from '../services/config';
+import { useAuth } from '../context/AuthContext';
+import { nombreMes } from '../utils/fechas';
+
+const esPdfUrl = (url?: string | null) => !!url && url.split('?')[0].toLowerCase().endsWith('.pdf');
+
+/**
+ * Comprobantes de las mensualidades VIP. Al aprobarlo, el plan rige ese mes
+ * (lavados incluidos, descuento y prioridad). Son de todo el país: los ve el
+ * admin o un operador nacional.
+ */
+const ComprobantesPlanes: React.FC = () => {
+  const [pagos, setPagos] = useState<PagoSuscripcion[]>([]);
+  const [error, setError] = useState('');
+  const cargar = useCallback(() => {
+    api.get('/planes/pagos', { params: { estado: 'en_verificacion' } }).then((r) => setPagos(r.data)).catch(() => setPagos([]));
+  }, []);
+  useEffect(cargar, [cargar]);
+
+  const verificar = async (p: PagoSuscripcion, aprobar: boolean) => {
+    const motivo = aprobar ? undefined : window.prompt('Motivo del rechazo (lo verá el cliente):');
+    if (!aprobar && !motivo?.trim()) return;
+    setError('');
+    try {
+      await api.put(`/planes/pagos/${p.id}/verificar`, { aprobar, motivo });
+      cargar();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
+  if (pagos.length === 0) return null;
+  return (
+    <div className="mt-10">
+      <h2 className="text-lg font-bold text-slate-800 mb-1 flex items-center gap-2"><Crown className="text-amber-500" size={20} /> Mensualidades de planes VIP</h2>
+      <p className="text-sm text-slate-500 mb-4">Al aprobarla, el plan del cliente rige ese mes.</p>
+      {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {pagos.map((p) => (
+          <div key={p.id} className="bg-white rounded-xl shadow-sm p-5">
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <p className="font-semibold text-slate-800">{p.suscripcion?.cliente?.nombre}</p>
+                <p className="text-sm text-slate-600">{p.suscripcion?.plan?.nombre} · {nombreMes(p.periodo)}</p>
+              </div>
+              <span className="text-sm font-bold text-sky-700">${p.monto.toFixed(2)}</span>
+            </div>
+            {p.referencia && <p className="text-xs text-slate-500 mb-2">Referencia: <span className="font-mono">{p.referencia}</span></p>}
+            {p.comprobante_url && (esPdfUrl(p.comprobante_url) ? (
+              <a href={urlArchivo(p.comprobante_url)} target="_blank" rel="noreferrer"
+                className="flex items-center justify-center gap-2 border border-slate-200 rounded-lg py-6 text-sm text-sky-600 hover:bg-slate-50 mb-3">
+                <FileText size={20} /> Abrir comprobante (PDF)
+              </a>
+            ) : (
+              <a href={urlArchivo(p.comprobante_url)} target="_blank" rel="noreferrer"
+                className="block rounded-lg overflow-hidden border border-slate-200 hover:ring-2 hover:ring-sky-400 mb-3">
+                <img src={urlArchivo(p.comprobante_url)} alt="Comprobante" className="w-full max-h-64 object-contain bg-slate-50" />
+              </a>
+            ))}
+            <div className="flex gap-2 border-t pt-3">
+              <button onClick={() => verificar(p, false)} className="flex-1 flex items-center justify-center gap-1 border border-red-200 text-red-600 py-2 rounded-lg text-sm hover:bg-red-50">
+                <X size={16} /> Rechazar
+              </button>
+              <button onClick={() => verificar(p, true)} className="flex-1 flex items-center justify-center gap-1 bg-green-600 text-white py-2 rounded-lg text-sm hover:bg-green-700">
+                <Check size={16} /> Aprobar
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 /**
  * Bandeja de comprobantes de transferencia que subieron los clientes.
@@ -10,6 +82,8 @@ import { urlArchivo } from '../services/config';
  * aprobarlos pasan a 'aprobado'. Un cliente no puede aprobar el suyo.
  */
 const PagosPorVerificar: React.FC = () => {
+  const { usuario } = useAuth();
+  const nacional = usuario?.rol === 'admin' || !usuario?.ciudad;
   const [pagos, setPagos] = useState<Pago[]>([]);
   const [cargando, setCargando] = useState(true);
   const [procesando, setProcesando] = useState<number | null>(null);
@@ -147,6 +221,8 @@ const PagosPorVerificar: React.FC = () => {
           ))}
         </div>
       )}
+
+      {nacional && <ComprobantesPlanes />}
     </div>
   );
 };

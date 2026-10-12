@@ -12,6 +12,9 @@
  * - PROFUNDA: capacidad = bahías disponibles DEL TALLER elegido (el cliente
  *   lleva el carro; hay un taller por ciudad).
  * - Bloqueos manuales: nacionales, de una ciudad o de un sitio (ver aplicaBloqueo).
+ * - Prioridad VIP: el parámetro vip.cupos_reservados aparta cupos de cada franja
+ *   para clientes con plan VIP, hasta vip.horas_liberacion antes de la franja
+ *   (ver cuposLibres). Apagado por defecto (0).
  * - Una franja está bloqueada cuando ocupaciones >= capacidad.
  *
  * disponibilidadDia() y crear reserva usan las MISMAS funciones de conteo y
@@ -22,6 +25,7 @@
 
 const prisma = require('../db');
 const fechas = require('../utils/fechas');
+const parametros = require('../utils/parametros');
 
 // Comparación de horas "HH:mm"
 const aMinutos = (hhmm) => {
@@ -79,21 +83,45 @@ const aplicaBloqueo = (bloqueo, estacionamiento) => {
 const ocupacionesDelDia = (dia, db = prisma) =>
   db.asignacionAgenda.findMany({
     where: { fecha: dia, estado: { not: 'cancelado' } },
-    include: { reserva: { select: { modalidad: true, id_estacionamiento: true } } }
+    include: { reserva: { select: { modalidad: true, id_estacionamiento: true, vip: true } } }
   });
 
-const contarOcupaciones = async ({ fecha, horaInicio, horaFin, modalidad, estacionamiento, db = prisma, asignaciones }) => {
+// soloVip: cuenta solo las reservas VIP (las que ocupan los cupos apartados)
+const contarOcupaciones = async ({ fecha, horaInicio, horaFin, modalidad, estacionamiento, db = prisma, asignaciones, soloVip = false }) => {
   const dia = fechas.fechaDia(fecha);
   if (!asignaciones) asignaciones = await ocupacionesDelDia(dia, db);
 
   const cuenta = (a) =>
     a.reserva
-      ? a.reserva.modalidad === modalidad && a.reserva.id_estacionamiento === estacionamiento.id
-      : aplicaBloqueo(a, estacionamiento);
+      ? a.reserva.modalidad === modalidad && a.reserva.id_estacionamiento === estacionamiento.id && (!soloVip || a.reserva.vip)
+      : !soloVip && aplicaBloqueo(a, estacionamiento);
 
   return asignaciones.filter(
     (a) => solapan(horaInicio, horaFin, a.hora_inicio, a.hora_fin) && cuenta(a)
   ).length;
+};
+
+// Configuración de la prioridad VIP (parámetros del panel)
+const configVip = async (db = prisma) => ({
+  reservados: await parametros.leerEntero('vip.cupos_reservados', 0, { min: 0, max: 50 }, db),
+  horas: await parametros.leerEntero('vip.horas_liberacion', 24, { min: 0, max: 720 }, db)
+});
+
+// ¿La franja está todavía dentro del período en que los cupos VIP siguen apartados?
+const franjaProtegida = (dia, inicioMin, horas) => {
+  const minutosHasta = (dia.getTime() - fechas.hoy().getTime()) / 60000 + inicioMin - aMinutos(fechas.horaActual());
+  return minutosHasta > horas * 60;
+};
+
+/**
+ * Cupos que le quedan a quien pide. Mientras la franja está protegida, los
+ * cupos apartados son solo para VIP: un cliente normal ve la capacidad menos
+ * lo ocupado menos lo apartado que los VIP todavía no usaron. Nunca se aparta
+ * el último cupo de un sitio.
+ */
+const cuposLibres = ({ capacidad, ocupadas, ocupadasVip, esVip, reservados, protegida }) => {
+  const apartados = protegida && !esVip ? Math.max(Math.min(reservados, capacidad - 1) - ocupadasVip, 0) : 0;
+  return Math.max(capacidad - ocupadas - apartados, 0);
 };
 
 /**
@@ -120,7 +148,7 @@ const validarSitio = (est, modalidad) => {
  * @param {number} duracionMin duración del servicio elegido
  * @param {number} idEstacionamiento el sitio (expreso) o el taller (profunda)
  */
-const disponibilidadDia = async ({ fecha, modalidad, duracionMin = 60, idEstacionamiento }) => {
+const disponibilidadDia = async ({ fecha, modalidad, duracionMin = 60, idEstacionamiento, esVip = false }) => {
   const dia = fechas.fechaDia(fecha);
   if (!dia) throw Object.assign(new Error('Fecha inválida'), { statusCode: 400 });
 
@@ -157,12 +185,18 @@ const disponibilidadDia = async ({ fecha, modalidad, duracionMin = 60, idEstacio
   const esHoy = dia.getTime() === hoy.getTime();
   const ahoraMin = aMinutos(fechas.horaActual());
   const asignaciones = await ocupacionesDelDia(dia);
+  const vip = await configVip();
 
   for (let t = inicioMin; t + duracionMin <= finMin; t += paso) {
     const horaInicio = aHHMM(t);
     const horaFin = aHHMM(t + duracionMin);
     const ocupadas = await contarOcupaciones({ fecha: dia, horaInicio, horaFin, modalidad, estacionamiento: est, asignaciones });
-    const cupos = Math.max(capacidad - ocupadas, 0);
+    const ocupadasVip = vip.reservados > 0
+      ? await contarOcupaciones({ fecha: dia, horaInicio, horaFin, modalidad, estacionamiento: est, asignaciones, soloVip: true })
+      : 0;
+    const cupos = cuposLibres({
+      capacidad, ocupadas, ocupadasVip, esVip, reservados: vip.reservados, protegida: franjaProtegida(dia, t, vip.horas)
+    });
     const pasada = dia < hoy || (esHoy && t <= ahoraMin);
     franjas.push({
       hora_inicio: horaInicio,
@@ -180,5 +214,6 @@ const disponibilidadDia = async ({ fecha, modalidad, duracionMin = 60, idEstacio
 
 module.exports = {
   disponibilidadDia, contarOcupaciones, ocupacionesDelDia, obtenerCapacidad, aplicaBloqueo, validarSitio,
+  configVip, franjaProtegida, cuposLibres,
   solapan, aMinutos, aHHMM
 };

@@ -23,6 +23,7 @@ import Usuarios from './pages/Usuarios';
 import Empresas from './pages/Empresas';
 import MiFlota from './pages/MiFlota';
 import Remoto from './pages/Remoto';
+import MiPlan from './pages/MiPlan';
 
 const App: React.FC = () => {
   return (
@@ -113,6 +114,11 @@ const App: React.FC = () => {
           <Route path="/remoto" element={
             <ProtectedRoute roles={['admin', 'operador']}>
               <Layout><Remoto /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/mi-plan" element={
+            <ProtectedRoute roles={['cliente']}>
+              <Layout><MiPlan /></Layout>
             </ProtectedRoute>
           } />
           <Route path="/mi-flota" element={
