@@ -13,6 +13,17 @@ const { notificarPagoVerificado } = require('../services/notificacion.service');
 const METODOS_MANUALES = ['efectivo', 'transferencia'];
 
 // Registrar pago manual (admin/operador)
+// Los lavados de una empresa son a crédito: se cobran todos juntos en su corte
+// mensual (ver empresa.controller.js). Cobrarlos sueltos descuadraría el corte.
+const rechazarSiCredito = (reserva, res) => {
+  if (reserva.forma_cobro !== 'credito') return false;
+  res.status(400).json({
+    success: false,
+    message: 'Este lavado es a crédito de una empresa: se cobra en su corte mensual, no por separado'
+  });
+  return true;
+};
+
 const registrar = async (req, res) => {
   try {
     const { id } = req.params;
@@ -31,6 +42,7 @@ const registrar = async (req, res) => {
       include: { pagos: true }
     });
     if (!reserva) return res.status(404).json({ success: false, message: 'Reserva no encontrada' });
+    if (rechazarSiCredito(reserva, res)) return;
     if (['cancelada', 'no_asistio'].includes(reserva.estado)) {
       return res.status(400).json({ success: false, message: `No se puede registrar un pago sobre una reserva "${reserva.estado}"` });
     }
@@ -131,6 +143,7 @@ const iniciarTarjeta = async (req, res) => {
     if (req.usuario.rol === 'cliente' && reserva.id_cliente !== req.usuario.id_cliente) {
       return res.status(403).json({ success: false, message: 'Acceso denegado' });
     }
+    if (rechazarSiCredito(reserva, res)) return;
     if (['cancelada', 'no_asistio'].includes(reserva.estado)) {
       return res.status(400).json({ success: false, message: `No se puede pagar una reserva "${reserva.estado}"` });
     }
@@ -212,6 +225,7 @@ const subirComprobanteCliente = async (req, res) => {
     if (reserva.id_cliente !== req.usuario.id_cliente) {
       return res.status(403).json({ success: false, message: 'Acceso denegado' });
     }
+    if (rechazarSiCredito(reserva, res)) return;
     if (['cancelada', 'no_asistio'].includes(reserva.estado)) {
       return res.status(400).json({ success: false, message: `No se puede pagar una reserva "${reserva.estado}"` });
     }

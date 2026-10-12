@@ -6,6 +6,29 @@ const prisma = require('../db');
 const sesionService = require('../services/sesion.service');
 const { generarPasswordTemporal, hashear } = require('../utils/credenciales');
 
+const TIPOS = ['persona', 'empresa'];
+
+/**
+ * Datos de empresa del cuerpo de la petición, validados. Una empresa necesita
+ * RUC (13 dígitos, como lo emite el SRI) porque es a quien se le factura.
+ * Devuelve { datos } o { error }.
+ */
+const datosEmpresa = (body, tipoFinal) => {
+  if (tipoFinal !== 'empresa') {
+    return { datos: { ruc: null, razon_social: null, email_facturacion: null, direccion_fiscal: null } };
+  }
+  const ruc = body.ruc?.toString().replace(/\s/g, '') || '';
+  if (!/^\d{13}$/.test(ruc)) return { error: 'El RUC de la empresa debe tener 13 dígitos' };
+  return {
+    datos: {
+      ruc,
+      razon_social: body.razon_social?.trim() || null,
+      email_facturacion: body.email_facturacion?.trim().toLowerCase() || null,
+      direccion_fiscal: body.direccion_fiscal?.trim() || null
+    }
+  };
+};
+
 // Vehículos del cliente tal como los muestra el panel: con el tipo resuelto
 // (de él dependen los precios) y ordenados por placa. Se devuelven también los
 // dados de baja —con su `estado`— porque el panel los marca en vez de ocultarlos:
@@ -17,14 +40,17 @@ const incluirVehiculos = {
 
 const listar = async (req, res) => {
   try {
-    const { estado, busqueda } = req.query;
+    const { estado, busqueda, tipo } = req.query;
     const where = {};
     if (estado) where.estado = estado;
+    if (tipo && TIPOS.includes(tipo)) where.tipo = tipo;
     if (busqueda) {
       where.OR = [
         { nombre: { contains: busqueda, mode: 'insensitive' } },
         { email: { contains: busqueda, mode: 'insensitive' } },
-        { cedula: { contains: busqueda } }
+        { cedula: { contains: busqueda } },
+        { ruc: { contains: busqueda } },
+        { razon_social: { contains: busqueda, mode: 'insensitive' } }
       ];
     }
     const clientes = await prisma.cliente.findMany({
@@ -62,6 +88,13 @@ const crear = async (req, res) => {
     if (!nombre || nombre.trim() === '') {
       return res.status(400).json({ success: false, message: 'El nombre es obligatorio' });
     }
+    const tipo = req.body.tipo || 'persona';
+    if (!TIPOS.includes(tipo)) return res.status(400).json({ success: false, message: 'Tipo inválido (persona | empresa)' });
+    const empresa = datosEmpresa(req.body, tipo);
+    if (empresa.error) return res.status(400).json({ success: false, message: empresa.error });
+    if (empresa.datos.ruc && await prisma.cliente.findUnique({ where: { ruc: empresa.datos.ruc } })) {
+      return res.status(409).json({ success: false, message: 'Ya existe una empresa con ese RUC' });
+    }
 
     const emailNormalizado = email?.trim().toLowerCase() || null;
     const conAcceso = crear_acceso === true || crear_acceso === 'true';
@@ -87,10 +120,12 @@ const crear = async (req, res) => {
     const cliente = await prisma.$transaction(async (tx) => {
       const nuevo = await tx.cliente.create({
         data: {
+          tipo,
           nombre: nombre.trim(),
-          cedula: cedula?.trim() || null,
+          cedula: tipo === 'empresa' ? null : cedula?.trim() || null,
           telefono: telefono?.trim() || null,
-          email: emailNormalizado
+          email: emailNormalizado,
+          ...empresa.datos
         }
       });
       if (conAcceso) {
@@ -168,6 +203,32 @@ const actualizar = async (req, res) => {
     const actual = await prisma.cliente.findUnique({ where: { id }, include: { usuario: true } });
     if (!actual) return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
 
+    // Tipo y datos de empresa: solo se tocan si vienen en la petición
+    const tipoFinal = req.body.tipo || actual.tipo;
+    if (!TIPOS.includes(tipoFinal)) return res.status(400).json({ success: false, message: 'Tipo inválido (persona | empresa)' });
+    const tocaEmpresa = req.body.tipo !== undefined || req.body.ruc !== undefined;
+    let empresa = { datos: {} };
+    if (tocaEmpresa) {
+      empresa = datosEmpresa({ ...actual, ...req.body }, tipoFinal);
+      if (empresa.error) return res.status(400).json({ success: false, message: empresa.error });
+      if (empresa.datos.ruc) {
+        const otra = await prisma.cliente.findUnique({ where: { ruc: empresa.datos.ruc } });
+        if (otra && otra.id !== id) return res.status(409).json({ success: false, message: 'Ya existe una empresa con ese RUC' });
+      }
+    }
+    // Una empresa que deja de serlo no puede dejar lavados a crédito sin cortar
+    if (actual.tipo === 'empresa' && tipoFinal === 'persona') {
+      const sinCortar = await prisma.reserva.count({
+        where: { id_cliente: id, forma_cobro: 'credito', id_corte: null, estado: { notIn: ['cancelada', 'no_asistio'] } }
+      });
+      if (sinCortar > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Tiene ${sinCortar} lavado(s) a crédito sin incluir en un corte: ciérrelos antes de cambiarla a persona`
+        });
+      }
+    }
+
     if (estado && !['activo', 'inactivo'].includes(estado)) {
       return res.status(400).json({ success: false, message: 'Estado inválido (activo | inactivo)' });
     }
@@ -192,6 +253,8 @@ const actualizar = async (req, res) => {
         where: { id },
         data: {
           ...(nombre && { nombre: nombre.trim() }),
+          ...(req.body.tipo && { tipo: tipoFinal }),
+          ...empresa.datos,
           ...(cedula !== undefined && { cedula: cedula?.trim() || null }),
           ...(telefono !== undefined && { telefono: telefono?.trim() || null }),
           ...(emailNormalizado !== undefined && { email: emailNormalizado }),

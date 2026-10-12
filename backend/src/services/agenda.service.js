@@ -106,6 +106,7 @@ const validarSitio = (est, modalidad) => {
   if (modalidad === 'profunda' && est.tipo !== 'taller') {
     throw Object.assign(new Error('La limpieza profunda se hace en un taller: elija uno'), { statusCode: 400 });
   }
+  // aliado o privado (parqueadero de una empresa): los dos admiten expreso
   if (modalidad === 'expreso' && (est.tipo === 'taller' || !est.admite_expreso)) {
     throw Object.assign(new Error('Este sitio no admite servicio expreso'), { statusCode: 400 });
   }

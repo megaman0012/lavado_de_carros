@@ -5,7 +5,18 @@
 const prisma = require('../db');
 const alcance = require('../utils/alcance');
 
-const TIPOS = ['aliado', 'taller'];
+const TIPOS = ['aliado', 'taller', 'privado'];
+
+// Un sitio privado necesita su empresa dueña. Devuelve el id o responde y null.
+const validarEmpresa = async (res, valor) => {
+  const id = alcance.aEntero(valor);
+  const empresa = id && (await prisma.cliente.findUnique({ where: { id } }));
+  if (!empresa || empresa.tipo !== 'empresa') {
+    res.status(400).json({ success: false, message: 'Un sitio privado necesita la empresa a la que pertenece' });
+    return null;
+  }
+  return id;
+};
 
 // El sitio existe y es de la ciudad de quien lo pide; si no, responde y devuelve null
 const sitioEnAlcance = async (req, res, id) => {
@@ -55,6 +66,7 @@ const listar = async (req, res) => {
       where,
       include: {
         ciudad: { select: { id: true, nombre: true } },
+        empresa: { select: { id: true, nombre: true } },
         plazas: true,
         _count: { select: { plazas: true } },
         suscripciones: { where: { estado: 'activa' }, include: { plan: true } }
@@ -102,6 +114,11 @@ const crear = async (req, res) => {
     const id_ciudad = await validarCiudad(req, res, req.body.id_ciudad);
     if (!id_ciudad) return;
     const esTaller = tipo === 'taller';
+    let id_cliente = null;
+    if (tipo === 'privado') {
+      id_cliente = await validarEmpresa(res, req.body.id_cliente);
+      if (!id_cliente) return;
+    }
 
     const estacionamiento = await prisma.$transaction(async (tx) => {
       const est = await tx.estacionamiento.create({
@@ -109,7 +126,8 @@ const crear = async (req, res) => {
           nombre: nombre.trim(),
           direccion: direccion?.trim() || null,
           id_ciudad,
-          tipo: esTaller ? 'taller' : 'aliado',
+          tipo: tipo || 'aliado',
+          id_cliente,
           contacto: contacto?.trim() || null,
           horario_apertura: horario_apertura || '07:00',
           horario_cierre: horario_cierre || '18:00',
@@ -156,6 +174,13 @@ const actualizar = async (req, res) => {
       id_ciudad = await validarCiudad(req, res, req.body.id_ciudad);
       if (!id_ciudad) return;
     }
+    // Pasar a privado (o cambiar de dueño) exige empresa; dejar de serlo la suelta
+    const tipoFinal = tipo || actual.tipo;
+    let id_cliente = tipoFinal === 'privado' ? actual.id_cliente : null;
+    if (tipoFinal === 'privado' && (req.body.id_cliente !== undefined || !actual.id_cliente)) {
+      id_cliente = await validarEmpresa(res, req.body.id_cliente);
+      if (!id_cliente) return;
+    }
     const estacionamiento = await prisma.estacionamiento.update({
       where: { id: actual.id },
       data: {
@@ -163,6 +188,7 @@ const actualizar = async (req, res) => {
         ...(direccion !== undefined && { direccion: direccion?.trim() || null }),
         ...(id_ciudad && { id_ciudad }),
         ...(tipo && { tipo }),
+        id_cliente,
         // Un taller nunca admite expreso, aunque el formulario lo mande marcado
         ...((tipo || actual.tipo) === 'taller' && { admite_expreso: false }),
         ...(contacto !== undefined && { contacto: contacto?.trim() || null }),

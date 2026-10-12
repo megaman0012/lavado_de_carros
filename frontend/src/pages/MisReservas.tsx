@@ -411,6 +411,14 @@ const MisReservas: React.FC = () => {
               {(() => {
                 const { enRevision, rechazado, saldo } = estadoPago(r);
                 if (['cancelada', 'no_asistio'].includes(r.estado)) return null;
+                // Lavado de empresa: no se paga suelto, va al corte mensual
+                if (r.forma_cobro === 'credito') return (
+                  <p className="mt-3 text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg px-3 py-2">
+                    {saldo === 0 && (r.precio_final ?? 0) > 0
+                      ? 'Pagado en el corte mensual.'
+                      : r.id_corte ? 'Incluido en el corte mensual de tu empresa.' : 'A crédito: se factura en el corte mensual de tu empresa.'}
+                  </p>
+                );
                 if (enRevision) return (
                   <p className="mt-3 text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-lg px-3 py-2 flex items-center gap-1.5">
                     <Clock3 size={14} className="shrink-0" />
@@ -440,7 +448,8 @@ const MisReservas: React.FC = () => {
                   </button>
                   {(() => {
                     const { enRevision, saldo } = estadoPago(r);
-                    const pagable = !['cancelada', 'no_asistio'].includes(r.estado) && saldo > 0 && !enRevision;
+                    const pagable = r.forma_cobro !== 'credito' &&
+                      !['cancelada', 'no_asistio'].includes(r.estado) && saldo > 0 && !enRevision;
                     return pagable ? (
                       <button
                         onClick={() => setModalComprobante(r)}

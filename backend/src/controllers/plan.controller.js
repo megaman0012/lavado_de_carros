@@ -110,8 +110,8 @@ const crearSuscripcion = async (req, res) => {
     const sitio = await prisma.estacionamiento.findUnique({ where: { id: parseInt(id_estacionamiento) } });
     if (!sitio) return res.status(400).json({ success: false, message: 'Estacionamiento inexistente' });
     if (!alcance.puedeVer(req.usuario, sitio.id_ciudad)) return alcance.fueraDeAlcance(res);
-    if (sitio.tipo === 'taller') {
-      return res.status(400).json({ success: false, message: 'Los planes son para sitios aliados (edificios, condominios), no para talleres' });
+    if (sitio.tipo !== 'aliado') {
+      return res.status(400).json({ success: false, message: 'Los planes son para sitios aliados (edificios, condominios), no para talleres ni parqueaderos privados' });
     }
 
     const plan = await prisma.plan.findUnique({ where: { id: parseInt(id_plan) } });

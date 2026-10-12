@@ -29,6 +29,11 @@ const rangoQuery = (req) => ({
 const deCiudad = (ciudad) => (ciudad ? { estacionamiento: { is: { id_ciudad: ciudad } } } : {});
 const reservaDeCiudad = (ciudad) => (ciudad ? { reserva: { is: deCiudad(ciudad) } } : {});
 
+// `hasta` es un día (medianoche) y las reservas guardan solo el día, pero un pago
+// guarda fecha Y hora: comparar con `lte: hasta` dejaba afuera todo lo cobrado
+// ese último día. Para los pagos el límite es el comienzo del día siguiente.
+const finDelDia = (dia) => fechas.sumarDias(dia, 1);
+
 // ==================== CÁLCULOS (compartidos entre JSON y exportación) ====================
 
 const calcularKPIs = async (ciudad = null) => {
@@ -111,7 +116,7 @@ const calcularResumenPeriodo = async (desde, hasta, ciudad = null) => {
     prisma.reserva.count({ where: { ...enRango, estado: 'cancelada' } }),
     prisma.reserva.count({ where: { ...enRango, estado: 'no_asistio' } }),
     prisma.pago.aggregate({
-      where: { estado: 'aprobado', fecha_pago: { gte: desde, lte: hasta }, ...reservaDeCiudad(ciudad) },
+      where: { estado: 'aprobado', fecha_pago: { gte: desde, lt: finDelDia(hasta) }, ...reservaDeCiudad(ciudad) },
       _sum: { monto: true }
     }),
     prisma.calificacion.aggregate({
@@ -204,7 +209,7 @@ const calcularPorCiudad = async (desde, hasta, ciudad = null) => {
       }
     }),
     prisma.pago.findMany({
-      where: { estado: 'aprobado', fecha_pago: { gte: desde, lte: hasta }, ...reservaDeCiudad(ciudad) },
+      where: { estado: 'aprobado', fecha_pago: { gte: desde, lt: finDelDia(hasta) }, ...reservaDeCiudad(ciudad) },
       select: { monto: true, reserva: { select: { estacionamiento: { select: { id_ciudad: true } } } } }
     })
   ]);
@@ -349,6 +354,7 @@ const calcularDetalle = async (desde, hasta, ciudad = null) => {
       sitio: r.estacionamiento?.nombre || 'Bahía de lavado',
       lavador: r.asignaciones.map((a) => a.lavador?.nombre).filter(Boolean).join(', ') || 'Sin asignar',
       precio: r.precio_final ?? 0,
+      cobro: r.forma_cobro === 'credito' ? 'Crédito (corte)' : 'Contado',
       pagado,
       saldo: Math.max((r.precio_final ?? 0) - pagado, 0),
       observaciones: r.registro?.observaciones || '',
@@ -465,6 +471,7 @@ const exportarExcel = async (req, res) => {
       { header: 'Sitio', key: 'sitio', width: 24 },
       { header: 'Lavador', key: 'lavador', width: 20 },
       { header: 'Precio ($)', key: 'precio', width: 12 },
+      { header: 'Cobro', key: 'cobro', width: 15 },
       { header: 'Pagado ($)', key: 'pagado', width: 12 },
       { header: 'Saldo ($)', key: 'saldo', width: 12 },
       { header: 'Observaciones', key: 'observaciones', width: 45 },

@@ -4,7 +4,8 @@ export interface Usuario {
   id: number;
   username: string;
   rol: 'admin' | 'operador' | 'lavador' | 'cliente';
-  cliente?: { id: number; nombre: string };
+  // tipo 'empresa' = gestor de flota (ve "Mi flota")
+  cliente?: { id: number; nombre: string; tipo?: 'persona' | 'empresa' };
   lavador?: { id: number; nombre: string };
   // Ciudad que limita lo que ve (operador de ciudad, lavador); null = nacional
   ciudad?: { id: number; nombre: string } | null;
@@ -99,8 +100,11 @@ export interface Estacionamiento {
   direccion?: string | null;
   id_ciudad: number;
   ciudad?: { id: number; nombre: string };
-  // aliado = edificio/condominio (expreso); taller = bahías de la limpieza profunda
-  tipo?: 'aliado' | 'taller';
+  // aliado = edificio/condominio (expreso); taller = bahías de la limpieza profunda;
+  // privado = parqueadero propio de una empresa
+  tipo?: 'aliado' | 'taller' | 'privado';
+  id_cliente?: number | null;
+  empresa?: { id: number; nombre: string } | null;
   horario_apertura?: string;
   horario_cierre?: string;
   admite_expreso?: boolean;
@@ -126,8 +130,14 @@ export interface Vehiculo {
 
 export interface Cliente {
   id: number;
+  // empresa = flota propia, tarifas pactadas y cobro a crédito con corte mensual
+  tipo?: 'persona' | 'empresa';
   nombre: string;
   cedula?: string | null;
+  ruc?: string | null;
+  razon_social?: string | null;
+  email_facturacion?: string | null;
+  direccion_fiscal?: string | null;
   telefono?: string | null;
   email?: string | null;
   estado?: string;
@@ -241,6 +251,9 @@ export interface Reserva {
   estado: EstadoReserva;
   observaciones?: string | null;
   precio_final?: number | null;
+  // contado = se paga la reserva; credito = va al corte mensual de la empresa
+  forma_cobro?: 'contado' | 'credito';
+  id_corte?: number | null;
   cliente?: Cliente;
   vehiculo?: Vehiculo;
   tipoServicio?: TipoServicio;
@@ -313,4 +326,73 @@ export interface Suscripcion {
   plan?: Plan;
   estacionamiento?: { id: number; nombre: string; ciudad?: { id: number; nombre: string } };
   uso_mes_actual?: number;
+}
+
+// ==================== EMPRESAS ====================
+
+export type EstadoCorte = 'cerrado' | 'facturado' | 'pagado' | 'anulado';
+
+export interface CorteEmpresa {
+  id: number;
+  codigo: string;
+  id_cliente: number;
+  periodo: string; // "2026-10"
+  desde: string;
+  hasta: string;
+  cantidad: number;
+  total: number;
+  estado: EstadoCorte;
+  numero_factura?: string | null;
+  fecha_factura?: string | null;
+  fecha_pago?: string | null;
+  referencia_pago?: string | null;
+  notas?: string | null;
+  usuario?: string | null;
+  createdAt?: string;
+}
+
+// Un lavado dentro de un corte (o de su vista previa)
+export interface FilaCorte {
+  id: number;
+  codigo: string;
+  fecha: string;
+  hora: string;
+  placa: string;
+  vehiculo: string;
+  tipo_vehiculo: string;
+  servicio: string;
+  adicionales: string;
+  sitio: string;
+  ciudad: string;
+  total: number;
+}
+
+export interface PreviaCorte {
+  periodo: string;
+  desde: string;
+  hasta: string;
+  cantidad: number;
+  total: number;
+  de_periodos_anteriores: number;
+  sin_completar: number;
+  corte_existente: { id: number; codigo: string; estado: EstadoCorte } | null;
+  filas: FilaCorte[];
+}
+
+// Fila de la tabla de tarifas de una empresa: precio de lista y pactado
+export interface TarifaFila {
+  id_tipo_servicio: number;
+  id_tipo_vehiculo: number;
+  servicio: string;
+  modalidad: string;
+  tipo_vehiculo: string;
+  precio_lista: number;
+  precio_empresa: number | null;
+}
+
+export interface EmpresaResumen extends Cliente {
+  sitiosPrivados: { id: number; nombre: string; ciudad?: { nombre: string } }[];
+  _count: { vehiculos: number; tarifas: number };
+  ultimo_corte: Pick<CorteEmpresa, 'codigo' | 'periodo' | 'estado' | 'total'> | null;
+  pendiente: { cantidad: number; total: number };
 }

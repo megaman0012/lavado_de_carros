@@ -60,10 +60,21 @@ model RefreshToken {
   @@index([expira])
 }
 
+// Un cliente es una persona o una EMPRESA. La empresa tiene flota (sus
+// vehículos), un único usuario (el gestor de flota), tarifas propias y paga a
+// crédito: sus lavados no se cobran uno por uno sino en un corte mensual que se
+// factura desde el sistema contable (ver CorteEmpresa).
 model Cliente {
   id        Int       @id @default(autoincrement())
+  // persona | empresa
+  tipo      String    @default("persona")
   nombre    String
   cedula    String?   @unique
+  // Solo empresas: datos para facturar
+  ruc               String? @unique
+  razon_social      String?
+  email_facturacion String?
+  direccion_fiscal  String?
   telefono  String?
   email     String?   @unique
   estado    String    @default("activo")
@@ -72,6 +83,57 @@ model Cliente {
   usuario  Usuario?
   vehiculos Vehiculo[]
   reservas  Reserva[]
+  tarifas          TarifaEmpresa[]
+  cortes           CorteEmpresa[]
+  sitiosPrivados   Estacionamiento[]
+}
+
+// Precio pactado con una empresa para un servicio y tipo de vehículo. Manda
+// sobre PrecioServicio; donde no hay fila, la empresa paga el precio base. La
+// duración es siempre la del catálogo (el trabajo no cambia por el precio).
+model TarifaEmpresa {
+  id               Int      @id @default(autoincrement())
+  id_cliente       Int
+  id_tipo_servicio Int
+  id_tipo_vehiculo Int
+  precio           Float
+  activo           Boolean  @default(true)
+  updatedAt        DateTime @updatedAt
+
+  cliente      Cliente      @relation(fields: [id_cliente], references: [id])
+  tipoServicio TipoServicio @relation(fields: [id_tipo_servicio], references: [id])
+  tipoVehiculo TipoVehiculo @relation(fields: [id_tipo_vehiculo], references: [id])
+
+  @@unique([id_cliente, id_tipo_servicio, id_tipo_vehiculo])
+}
+
+// Corte mensual de una empresa: agrupa sus lavados a crédito completados y es
+// lo que se factura. La factura electrónica (SRI) sale del sistema contable;
+// acá se arma el corte, se exporta y se registra el número de factura y el pago.
+// Estados: cerrado → facturado → pagado (o anulado, que libera los lavados).
+model CorteEmpresa {
+  id             Int       @id @default(autoincrement())
+  codigo         String    @unique // CORTE-2026-10-0007 (mes y empresa)
+  id_cliente     Int
+  periodo        String // "2026-10"
+  desde          DateTime
+  hasta          DateTime
+  cantidad       Int
+  total          Float
+  estado         String    @default("cerrado")
+  numero_factura String?
+  fecha_factura  DateTime?
+  fecha_pago     DateTime?
+  referencia_pago String?
+  notas          String?
+  usuario        String? // quién lo cerró
+  createdAt      DateTime  @default(now())
+
+  cliente  Cliente   @relation(fields: [id_cliente], references: [id])
+  reservas Reserva[]
+
+  @@index([id_cliente])
+  @@index([periodo])
 }
 
 model Vehiculo {
@@ -105,6 +167,7 @@ model TipoVehiculo {
 
   vehiculos Vehiculo[]
   precios   PrecioServicio[]
+  tarifasEmpresa TarifaEmpresa[]
 }
 
 // ==================== CIUDADES ====================
@@ -133,8 +196,10 @@ model Estacionamiento {
   direccion        String?
   id_ciudad        Int
   // aliado = edificio/condominio/oficina donde se hace el expreso;
-  // taller = tiene las bahías de la limpieza profunda de su ciudad.
+  // taller = tiene las bahías de la limpieza profunda de su ciudad;
+  // privado = parqueadero propio de una empresa (id_cliente): solo ella reserva ahí.
   tipo             String  @default("aliado")
+  id_cliente       Int?
   contacto         String?
   horario_apertura String  @default("07:00")
   horario_cierre   String  @default("18:00")
@@ -147,6 +212,7 @@ model Estacionamiento {
   estado           String  @default("activo")
 
   ciudad        Ciudad             @relation(fields: [id_ciudad], references: [id])
+  empresa       Cliente?           @relation(fields: [id_cliente], references: [id])
   plazas        Plaza[]
   reservas      Reserva[]
   suscripciones Suscripcion[]
@@ -213,6 +279,7 @@ model TipoServicio {
 
   reservas Reserva[]
   precios  PrecioServicio[]
+  tarifasEmpresa TarifaEmpresa[]
 }
 
 model PrecioServicio {
@@ -299,6 +366,9 @@ model Reserva {
   // Total a cobrar: precio del servicio para el tipo de vehículo (0 si lo cubre
   // un plan) + adicionales. El desglose de adicionales está en ReservaAdicional.
   precio_final       Float?
+  // contado = se paga la reserva (persona); credito = va al corte mensual de la empresa
+  forma_cobro        String   @default("contado")
+  id_corte           Int?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -308,6 +378,7 @@ model Reserva {
   estacionamiento Estacionamiento?   @relation(fields: [id_estacionamiento], references: [id])
   plaza           Plaza?             @relation(fields: [id_plaza], references: [id])
   suscripcion     Suscripcion?       @relation(fields: [id_suscripcion], references: [id])
+  corte           CorteEmpresa?      @relation(fields: [id_corte], references: [id])
   asignaciones    AsignacionAgenda[]
   registro        RegistroLavado?
   pagos           Pago[]
@@ -319,6 +390,7 @@ model Reserva {
   @@index([estado])
   @@index([id_cliente])
   @@index([id_estacionamiento])
+  @@index([id_corte])
 }
 
 // AGENDA: cada fila = franja ocupada. La disponibilidad se calcula

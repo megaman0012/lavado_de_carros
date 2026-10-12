@@ -20,6 +20,8 @@ import Planes from './pages/Planes';
 import PagosPorVerificar from './pages/PagosPorVerificar';
 import Ciudades from './pages/Ciudades';
 import Usuarios from './pages/Usuarios';
+import Empresas from './pages/Empresas';
+import MiFlota from './pages/MiFlota';
 
 const App: React.FC = () => {
   return (
@@ -100,6 +102,16 @@ const App: React.FC = () => {
           <Route path="/ciudades" element={
             <ProtectedRoute roles={['admin']}>
               <Layout><Ciudades /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/empresas" element={
+            <ProtectedRoute roles={['admin', 'operador']}>
+              <Layout><Empresas /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/mi-flota" element={
+            <ProtectedRoute roles={['cliente']}>
+              <Layout><MiFlota /></Layout>
             </ProtectedRoute>
           } />
           <Route path="/usuarios" element={

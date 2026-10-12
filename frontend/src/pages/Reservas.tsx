@@ -362,7 +362,11 @@ const ModalPago: React.FC<{ reserva: Reserva; onClose: () => void; onDone: () =>
           </ul>
         )}
 
-        {saldo > 0 ? (
+        {reserva.forma_cobro === 'credito' && saldo > 0 ? (
+          <p className="text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg p-3 border-t">
+            Lavado a crédito de una empresa: no se cobra suelto. Se factura y se cobra en su corte mensual (menú <b>Empresas</b>).
+          </p>
+        ) : saldo > 0 ? (
           <form onSubmit={registrar} className="space-y-3 border-t pt-4">
             <p className="text-xs font-semibold uppercase text-slate-400 tracking-wide">Registrar pago</p>
             <div className="flex gap-2">
@@ -519,6 +523,9 @@ const Reservas: React.FC = () => {
                       </span>
                       {(r.adicionales?.length ?? 0) > 0 && (
                         <span className="block text-xs text-slate-400">+ {r.adicionales!.map((a) => a.nombre).join(', ')}</span>
+                      )}
+                      {r.forma_cobro === 'credito' && (
+                        <span className="block text-xs text-indigo-600">a crédito · {r.id_corte ? 'en corte' : 'sin cortar'}</span>
                       )}
                       {r.estacionamiento && (
                         <span className="block text-xs text-slate-400">

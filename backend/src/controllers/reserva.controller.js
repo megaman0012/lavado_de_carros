@@ -82,7 +82,8 @@ const crear = async (req, res) => {
     const cotizacion = await cotizacionService.cotizar({
       idTipoServicio: id_tipo_servicio,
       idTipoVehiculo: vehiculo.id_tipo_vehiculo,
-      adicionales
+      adicionales,
+      idCliente: id_cliente
     });
     const { servicio } = cotizacion;
 
@@ -100,6 +101,10 @@ const crear = async (req, res) => {
     }
     agendaService.validarSitio(estacionamiento, servicio.modalidad);
     if (!alcance.puedeVer(req.usuario, estacionamiento.id_ciudad)) return alcance.fueraDeAlcance(res);
+    // El parqueadero propio de una empresa es solo para ella
+    if (estacionamiento.tipo === 'privado' && estacionamiento.id_cliente !== id_cliente) {
+      return res.status(400).json({ success: false, message: 'Ese estacionamiento es privado de otra empresa' });
+    }
 
     const dia = fechas.fechaDia(fecha);
     if (!dia) {
@@ -153,7 +158,7 @@ const crear = async (req, res) => {
       let id_suscripcion = null;
       let precioServicio = cotizacion.precio_servicio;
       let planCubre = null;
-      if (estacionamiento.tipo !== 'taller') {
+      if (estacionamiento.tipo === 'aliado') {
         const suscripcion = await tx.suscripcion.findFirst({
           where: { id_estacionamiento: parseInt(id_estacionamiento), estado: 'activa', plan: { modalidad: servicio.modalidad } },
           include: { plan: true }
@@ -189,6 +194,8 @@ const crear = async (req, res) => {
           estado: 'solicitada',
           observaciones: observaciones?.trim() || null,
           precio_final: precioServicio + cotizacion.precio_adicionales,
+          // La empresa no paga lavado por lavado: va a su corte mensual
+          forma_cobro: cliente.tipo === 'empresa' ? 'credito' : 'contado',
           adicionales: {
             create: cotizacion.adicionales.map((a) => ({
               id_adicional: a.id,
@@ -213,6 +220,8 @@ const crear = async (req, res) => {
       const notas = [
         `${servicio.nombre} para ${cotizacion.tipoVehiculo.nombre}`,
         planCubre && `cubierto por el plan: ${planCubre}`,
+        cotizacion.tarifa_empresa && 'tarifa de empresa',
+        cliente.tipo === 'empresa' && 'a crédito (corte mensual)',
         cotizacion.adicionales.length > 0 && `adicionales: ${cotizacion.adicionales.map((a) => a.nombre).join(', ')}`
       ].filter(Boolean);
 
@@ -258,7 +267,8 @@ const cotizar = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Acceso denegado' });
     }
     const c = await cotizacionService.cotizar({
-      idTipoServicio: id_tipo_servicio, idTipoVehiculo: vehiculo.id_tipo_vehiculo, adicionales
+      idTipoServicio: id_tipo_servicio, idTipoVehiculo: vehiculo.id_tipo_vehiculo, adicionales,
+      idCliente: vehiculo.id_cliente
     });
     res.json({
       success: true,
@@ -266,6 +276,8 @@ const cotizar = async (req, res) => {
         servicio: { id: c.servicio.id, nombre: c.servicio.nombre, modalidad: c.servicio.modalidad },
         tipo_vehiculo: { id: c.tipoVehiculo.id, nombre: c.tipoVehiculo.nombre },
         precio_servicio: c.precio_servicio,
+        precio_lista: c.precio_lista,
+        tarifa_empresa: c.tarifa_empresa,
         duracion_servicio: c.duracion_servicio,
         adicionales: c.adicionales,
         precio_adicionales: c.precio_adicionales,

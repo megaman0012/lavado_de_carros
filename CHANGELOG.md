@@ -2,6 +2,47 @@
 
 ## [Sin publicar]
 
+### 2026-10-12 (2) — Clientes empresa: flota, tarifas y corte mensual (fase 2, pendiente de desplegar)
+
+#### Agregado
+- **Cliente de tipo empresa** (`Cliente.tipo`): RUC (13 dígitos, único), razón
+  social, email de facturación y dirección fiscal. Su flota son sus vehículos y
+  su único usuario es el **gestor de flota**. Se da de alta en Clientes.
+- **Tarifas pactadas** (`TarifaEmpresa`): precio por servicio y tipo de
+  vehículo que reemplaza al de lista; donde no hay, paga el de lista. La
+  duración es la del catálogo y los adicionales van a precio de lista. La
+  cotización y la reserva usan la misma regla, así lo que ve el gestor es lo
+  que se cobra.
+- **Parqueadero privado** (`Estacionamiento.tipo = 'privado'` + `id_cliente`):
+  solo esa empresa reserva ahí y no aparece al público. Admite expreso; no planes.
+- **Cobro a crédito y corte mensual** (`Reserva.forma_cobro`, `CorteEmpresa`):
+  los lavados de una empresa no se cobran sueltos (el panel y la app no ofrecen
+  pagarlos y la API lo rechaza). Se juntan en un corte por mes:
+  cerrar → facturar (número del sistema contable) → pagar. Pagar registra un
+  pago aprobado por lavado, así "cobrado" y los saldos cuadran como siempre.
+  Entra todo lo completado y no cortado hasta fin de mes (también lo de meses
+  anteriores); un corte cerrado o facturado se puede anular y sus lavados
+  vuelven a quedar pendientes. Cancelados y "no asistió" no se cobran.
+- **Excel del corte** para el sistema contable: datos de facturación, detalle
+  lavado por lavado y resumen por vehículo.
+- Pantalla **Empresas** (admin y operador nacional): pendiente sin cortar,
+  último corte, tarifas editables con el % de descuento, y los cortes.
+- Portal **Mi flota** del gestor: lavados y gasto del mes por vehículo, lo
+  pendiente de facturar y sus cortes con el Excel. En la reserva ve sus precios
+  pactados y su parqueadero privado primero.
+- Columna **Cobro** (contado / crédito) en el detalle del Excel de reportes.
+- 20 pruebas nuevas (251 en total).
+
+#### Corregido
+- **El "cobrado" de un período dejaba afuera lo cobrado el último día.** Los
+  pagos guardan fecha y hora y se comparaban contra la medianoche del último
+  día: en el reporte mensual, lo cobrado el día 31 no se contaba.
+
+#### Migración
+`backend/prisma/migraciones/2026-10-12_empresas.sql`: solo agrega tablas y
+columnas. Los clientes existentes quedan como persona y las reservas, al
+contado. Probada sobre una copia de producción (el esquema coincide exacto).
+
 ### 2026-10-12 — Operación nacional por ciudades (fase 1 de la expansión, pendiente de desplegar)
 
 Primera de cuatro fases (ciudades → empresas → lavado remoto → VIP). Con sitios

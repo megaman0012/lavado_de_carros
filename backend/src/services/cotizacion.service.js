@@ -9,6 +9,10 @@
  * sala (tipo de vehículo), y la confitería (adicionales) se suma aparte.
  * Crear reserva y la vista previa del cliente usan esta misma función, así lo
  * que se muestra es lo que se cobra.
+ *
+ * Empresas: si el cliente es una empresa con tarifa pactada para ese servicio y
+ * tipo de vehículo (TarifaEmpresa), ese precio reemplaza al del catálogo. La
+ * duración es siempre la del catálogo, y los adicionales van a precio de lista.
  */
 
 const prisma = require('../db');
@@ -29,7 +33,7 @@ const idsAdicionales = (lista) => {
  *             adicionales: {id,nombre,precio,duracion_min}[],
  *             precio_adicionales, duracion_min, total }}
  */
-const cotizar = async ({ idTipoServicio, idTipoVehiculo, adicionales, db = prisma }) => {
+const cotizar = async ({ idTipoServicio, idTipoVehiculo, adicionales, idCliente = null, db = prisma }) => {
   const servicio = await db.tipoServicio.findUnique({ where: { id: parseInt(idTipoServicio) } });
   if (!servicio || !servicio.activo) throw error400('Servicio no disponible');
 
@@ -49,6 +53,18 @@ const cotizar = async ({ idTipoServicio, idTipoVehiculo, adicionales, db = prism
     throw error400(`"${servicio.nombre}" no está disponible para este tipo de vehículo`);
   }
 
+  // Precio pactado de la empresa, si lo hay (una persona nunca tiene filas acá)
+  const pactada = idCliente
+    ? await db.tarifaEmpresa.findUnique({
+      where: {
+        id_cliente_id_tipo_servicio_id_tipo_vehiculo: {
+          id_cliente: parseInt(idCliente), id_tipo_servicio: servicio.id, id_tipo_vehiculo: tarifa.id_tipo_vehiculo
+        }
+      }
+    })
+    : null;
+  const precioServicio = pactada?.activo ? pactada.precio : tarifa.precio;
+
   const ids = idsAdicionales(adicionales);
   const extras = ids.length
     ? await db.servicioAdicional.findMany({ where: { id: { in: ids }, activo: true }, orderBy: { orden_display: 'asc' } })
@@ -61,12 +77,14 @@ const cotizar = async ({ idTipoServicio, idTipoVehiculo, adicionales, db = prism
   return {
     servicio,
     tipoVehiculo: tarifa.tipoVehiculo,
-    precio_servicio: tarifa.precio,
+    precio_servicio: precioServicio,
+    precio_lista: tarifa.precio,
+    tarifa_empresa: !!pactada?.activo,
     duracion_servicio: tarifa.duracion_min,
     adicionales: extras.map((a) => ({ id: a.id, nombre: a.nombre, precio: a.precio, duracion_min: a.duracion_min })),
     precio_adicionales: precioAdicionales,
     duracion_min: tarifa.duracion_min + minutosAdicionales,
-    total: tarifa.precio + precioAdicionales
+    total: precioServicio + precioAdicionales
   };
 };
 

@@ -133,7 +133,7 @@ const refrescar = async (tokenPlano) => {
   const usuario = await prisma.usuario.findUnique({
     where: { id: guardado.id_usuario },
     include: {
-      cliente: { select: { id: true, nombre: true, estado: true } },
+      cliente: { select: { id: true, nombre: true, estado: true, tipo: true } },
       lavador: { select: { id: true, nombre: true, estado: true, ciudad: { select: { id: true, nombre: true } } } },
       ciudad: { select: { id: true, nombre: true } }
     }

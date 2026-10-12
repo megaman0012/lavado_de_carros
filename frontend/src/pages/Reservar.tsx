@@ -72,7 +72,24 @@ const Reservar: React.FC = () => {
 
   const esCliente = isAuthenticated && usuario?.rol === 'cliente';
   const vehiculo = useMemo(() => vehiculos.find((v) => v.id === vehiculoId) || null, [vehiculos, vehiculoId]);
-  const servicio = useMemo(() => servicios.find((s) => s.id === servicioId) || null, [servicios, servicioId]);
+  // Empresa (gestor de flota): sus precios pactados y sus parqueaderos propios
+  const esEmpresa = esCliente && usuario?.cliente?.tipo === 'empresa';
+  const [tarifasEmpresa, setTarifasEmpresa] = useState<{ id_tipo_servicio: number; id_tipo_vehiculo: number; precio: number }[]>([]);
+  const [sitiosPropios, setSitiosPropios] = useState<Estacionamiento[]>([]);
+  useEffect(() => {
+    if (!esEmpresa) return;
+    api.get('/mi-empresa/tarifas').then((r) => setTarifasEmpresa(r.data)).catch(() => {});
+    api.get('/mi-empresa/sitios').then((r) => setSitiosPropios(r.data)).catch(() => {});
+  }, [esEmpresa]);
+  // El catálogo con el precio que esta cuenta va a pagar (el servidor cobra lo mismo)
+  const catalogo = useMemo(() => tarifasEmpresa.length === 0 ? servicios : servicios.map((s) => ({
+    ...s,
+    precios: s.precios.map((p) => {
+      const t = tarifasEmpresa.find((x) => x.id_tipo_servicio === s.id && x.id_tipo_vehiculo === p.id_tipo_vehiculo);
+      return t ? { ...p, precio: t.precio } : p;
+    })
+  })), [servicios, tarifasEmpresa]);
+  const servicio = useMemo(() => catalogo.find((s) => s.id === servicioId) || null, [catalogo, servicioId]);
   const tarifa = tarifaPara(servicio, vehiculo?.id_tipo_vehiculo);
   const extras = useMemo(() => adicionales.filter((a) => adicionalesSel.includes(a.id)), [adicionales, adicionalesSel]);
   const total = totales(tarifa, extras);
@@ -116,6 +133,17 @@ const Reservar: React.FC = () => {
     api.get('/public/ciudades').then((r) => setCiudades(r.data)).catch(() => {});
   }, []);
 
+  // Las ciudades de los parqueaderos propios también se ofrecen, aunque no tengan sitios públicos
+  useEffect(() => {
+    const faltan = sitiosPropios
+      .map((e) => e.ciudad)
+      .filter((c): c is { id: number; nombre: string } => !!c && !ciudades.some((x) => x.id === c.id));
+    if (faltan.length > 0) {
+      const unicas = faltan.filter((c, i) => faltan.findIndex((x) => x.id === c.id) === i);
+      setCiudades([...ciudades, ...unicas].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    }
+  }, [sitiosPropios, ciudades]);
+
   // Ciudad: si hay una sola, no se pregunta; si la guardada ya no se ofrece, se olvida
   useEffect(() => {
     if (ciudades.length === 0) return;
@@ -137,7 +165,9 @@ const Reservar: React.FC = () => {
       params: { id_ciudad: ciudadId, ...(modalidad === 'profunda' && { tipo: 'taller' }) }
     })
       .then((r) => {
-        const lista: Estacionamiento[] = r.data;
+        // Para el expreso, primero los parqueaderos propios de la empresa en esa ciudad
+        const propios = modalidad === 'expreso' ? sitiosPropios.filter((e) => e.id_ciudad === ciudadId) : [];
+        const lista: Estacionamiento[] = [...propios, ...r.data];
         setEstacionamientos(lista);
         // Lo elegido antes ya no sirve (cambió de ciudad o de modalidad); con un único taller, se elige solo
         setEstacionamientoId((actual) =>
@@ -146,7 +176,7 @@ const Reservar: React.FC = () => {
             : null);
       })
       .catch(() => setEstacionamientos([]));
-  }, [ciudadId, modalidad]);
+  }, [ciudadId, modalidad, sitiosPropios]);
 
   useEffect(() => {
     if (!esCliente) return;
@@ -241,6 +271,7 @@ const Reservar: React.FC = () => {
             {exito.adicionales?.length > 0 && <p className="text-slate-500">+ {exito.adicionales.map((a: any) => a.nombre).join(', ')}</p>}
             <p className="text-slate-500">{exito.estacionamiento?.nombre || 'Bahía de lavado'}</p>
             <p className="text-right text-lg font-bold text-slate-800 pt-2">{dinero(exito.precio_final)}</p>
+            {exito.forma_cobro === 'credito' && <p className="text-right text-xs text-indigo-700">a crédito · corte mensual</p>}
           </div>
           <div className="p-6 pt-0">
             <Link to="/mis-reservas" replace className="block text-center bg-sky-600 text-white py-2.5 rounded-lg hover:bg-sky-700">Ver mis reservas</Link>
@@ -384,7 +415,7 @@ const Reservar: React.FC = () => {
               <span className="font-mono text-slate-500 text-base">{vehiculo?.placa}</span>
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {servicios.map((s) => {
+              {catalogo.map((s) => {
                 const t = tarifaPara(s, vehiculo?.id_tipo_vehiculo);
                 return (
                   <button key={s.id} disabled={!t} onClick={() => setServicioId(s.id)}
@@ -490,6 +521,7 @@ const Reservar: React.FC = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {estacionamientos.map((e) => (
                         <button key={e.id} onClick={() => setEstacionamientoId(e.id)} className={tarjeta(estacionamientoId === e.id)}>
+                          {e.tipo === 'privado' && <span className="text-xs font-medium text-indigo-600">Parqueadero de tu empresa</span>}
                           <h3 className="font-semibold text-slate-800">{e.nombre}</h3>
                           <p className="text-sm text-slate-500">{e.direccion}</p>
                           <p className="text-xs text-slate-400 mt-1">{e.horario_apertura} – {e.horario_cierre}</p>
@@ -592,9 +624,15 @@ const Reservar: React.FC = () => {
                 <span>Total</span>
                 <span>{dinero(total.precio)}</span>
               </div>
-              <p className="text-xs text-slate-400">
-                Si tu edificio tiene un plan contratado, el servicio principal puede salir sin costo; lo verás en el total al confirmar.
-              </p>
+              {esEmpresa ? (
+                <p className="text-xs text-indigo-700 bg-indigo-50 rounded-lg px-3 py-2">
+                  A crédito, con la tarifa de tu empresa: no pagas ahora. Se factura en el corte mensual.
+                </p>
+              ) : (
+                <p className="text-xs text-slate-400">
+                  Si tu edificio tiene un plan contratado, el servicio principal puede salir sin costo; lo verás en el total al confirmar.
+                </p>
+              )}
             </div>
           </div>
         )}

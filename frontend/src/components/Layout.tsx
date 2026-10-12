@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, CalendarDays, CalendarCheck, Droplets, Car,
-  Users, MapPin, Wrench, BarChart3, LogOut, Menu, X, Home, Building2, BadgeCheck, Map, UserCog
+  Users, MapPin, Wrench, BarChart3, LogOut, Menu, X, Home, Building2, BadgeCheck, Map, UserCog, Briefcase, Truck
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth, rutaInicio } from '../context/AuthContext';
@@ -15,6 +15,10 @@ interface MenuItem {
   roles: string[];
   // Muestra el contador de comprobantes esperando validación
   contador?: 'pagosPendientes';
+  // Solo para alcance nacional (admin u operador sin ciudad)
+  nacional?: boolean;
+  // Solo para la cuenta de una empresa (gestor de flota)
+  empresa?: boolean;
 }
 
 const menuItems: MenuItem[] = [
@@ -23,6 +27,7 @@ const menuItems: MenuItem[] = [
   { to: '/reservas', label: 'Reservas', icon: <CalendarCheck size={20} />, roles: ['admin', 'operador'] },
   { to: '/reservar', label: 'Nueva Reserva', icon: <Droplets size={20} />, roles: ['admin', 'operador', 'cliente'] },
   { to: '/mis-reservas', label: 'Mis Reservas', icon: <Car size={20} />, roles: ['cliente'] },
+  { to: '/mi-flota', label: 'Mi flota', icon: <Truck size={20} />, roles: ['cliente'], empresa: true },
   { to: '/mis-trabajos', label: 'Mis Trabajos', icon: <Wrench size={20} />, roles: ['lavador'] },
   { to: '/clientes', label: 'Clientes', icon: <Users size={20} />, roles: ['admin', 'operador'] },
   { to: '/estacionamientos', label: 'Estacionamientos', icon: <MapPin size={20} />, roles: ['admin', 'operador'] },
@@ -31,6 +36,7 @@ const menuItems: MenuItem[] = [
   { to: '/pagos-por-verificar', label: 'Pagos por verificar', icon: <BadgeCheck size={20} />, roles: ['admin', 'operador'], contador: 'pagosPendientes' },
   { to: '/reportes', label: 'Reportes', icon: <BarChart3 size={20} />, roles: ['admin', 'operador'] },
   { to: '/planes', label: 'Planes', icon: <Building2 size={20} />, roles: ['admin', 'operador'] },
+  { to: '/empresas', label: 'Empresas', icon: <Briefcase size={20} />, roles: ['admin', 'operador'], nacional: true },
   { to: '/ciudades', label: 'Ciudades', icon: <Map size={20} />, roles: ['admin'] },
   { to: '/usuarios', label: 'Usuarios', icon: <UserCog size={20} />, roles: ['admin'] }
 ];
@@ -41,7 +47,10 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const itemsVisibles = menuItems.filter((m) => usuario && m.roles.includes(usuario.rol));
+  const nacional = usuario?.rol === 'admin' || (usuario?.rol === 'operador' && !usuario.ciudad);
+  const esEmpresa = usuario?.cliente?.tipo === 'empresa';
+  const itemsVisibles = menuItems.filter((m) =>
+    usuario && m.roles.includes(usuario.rol) && (!m.nacional || nacional) && (!m.empresa || esEmpresa));
 
   // Comprobantes esperando validación: se refresca al navegar para que el
   // operador vea al toque cuando un cliente envía uno.

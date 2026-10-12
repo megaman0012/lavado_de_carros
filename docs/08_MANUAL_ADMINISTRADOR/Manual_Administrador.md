@@ -5,7 +5,8 @@ Versión 2.2 · 2026-10-12 · Reemplaza a la 2.1 (2026-10-08), la 2.0 (2026-09-2
 **Novedades de la 2.2:** operación nacional **por ciudades** (sección 1.2):
 operador por ciudad, pantallas **Ciudades** y **Usuarios**, sitios de tipo
 taller, capacidad y bloqueos por ciudad (sección 6) y reportes por ciudad
-(sección 9).
+(sección 9). **Clientes empresa** (sección 1.3): flota, tarifas pactadas,
+parqueadero privado y cobro a crédito con **corte mensual**.
 
 **Novedades de la 2.1:** vehículos de cada cliente visibles desde Clientes
 (sección 2.1), Dashboard y Reportes ahora distintos y con filtro por mes
@@ -81,6 +82,40 @@ La operación es nacional y se organiza por ciudad. Cada **sitio**, **lavador** 
   en los formularios, sin tocar lo ya registrado.
 - Al migrar (2026-10-12) los 3 lavadores quedaron en Quito y el operador
   existente quedó nacional.
+
+### 1.3 Empresas, tarifas y corte mensual (desde el 2026-10-12)
+
+Una **empresa** es un cliente de tipo `empresa` (Clientes → "Empresa con
+flota"). Necesita **RUC de 13 dígitos** (es a quien se le factura); conviene
+cargar razón social, email de facturación y dirección fiscal, que salen en el
+Excel del corte. Sus vehículos son su flota y tiene **un solo usuario**: el
+gestor de flota (el email de la ficha, con "Crear su acceso").
+
+| Qué | Cómo funciona |
+|---|---|
+| **Tarifa pactada** | Empresas → la empresa → Tarifas pactadas. Precio por servicio y tipo de vehículo; vacío = paga el de lista. Rige para las reservas nuevas. Los adicionales van a precio de lista |
+| **Parqueadero privado** | Estacionamientos → tipo **Privado** + la empresa dueña. Solo esa empresa lo ve y reserva ahí; no aparece al público |
+| **Cobro** | Sus lavados nacen **a crédito**: no se pagan sueltos (ni el panel ni la app lo permiten). Se cobran en el corte mensual |
+| **Mi flota** | El gestor ve el gasto del mes por vehículo, lo pendiente de facturar y sus cortes con el Excel |
+
+**Ciclo del corte** (Empresas → la empresa → Cortar un mes):
+
+1. **Cerrar.** Se elige el mes (por defecto, el anterior) y se revisa la vista
+   previa. Entran los lavados **completados** a crédito hasta fin de ese mes que
+   no estén en otro corte, incluidos los de meses anteriores que quedaron
+   afuera. Los que todavía no se completan entran en el corte siguiente. Los
+   cancelados y "no asistió" no se cobran. Hay un corte por empresa y mes.
+2. **Facturar.** Con el Excel del corte se emite la factura electrónica en el
+   **sistema contable** (este sistema no emite facturas) y se registra aquí el
+   número que dio.
+3. **Pagar.** Al recibir el pago se registra con su referencia. El sistema crea
+   un pago aprobado por cada lavado del corte, así el "cobrado" de Reportes y el
+   saldo de cada reserva cuadran igual que con los clientes de contado.
+
+Un corte **cerrado o facturado se puede anular** (con motivo): sus lavados
+vuelven a quedar pendientes y entran en el próximo corte, que lleva sufijo
+(`CORTE-2026-10-E0011-2`). Uno **pagado no se anula**. La pantalla Empresas
+(y los cortes) es de **alcance nacional**: admin u operador sin ciudad.
 
 ## 2. Catálogos
 

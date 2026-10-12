@@ -7,7 +7,12 @@ import api from '../services/api';
 import { Cliente, TipoVehiculo, Vehiculo } from '../types';
 import FormVehiculo, { IconoTipo, SelectorTipoVehiculo, useTiposVehiculo } from '../components/FormVehiculo';
 
-const FORM_VACIO = { nombre: '', cedula: '', telefono: '', email: '', crear_acceso: true };
+const FORM_VACIO = {
+  tipo: 'persona' as 'persona' | 'empresa',
+  nombre: '', cedula: '', telefono: '', email: '', crear_acceso: true,
+  // Solo empresas: a quién se le factura
+  ruc: '', razon_social: '', email_facturacion: '', direccion_fiscal: ''
+};
 
 // Aviso con la contraseña provisional: el backend la devuelve una sola vez
 const AvisoCredenciales: React.FC<{ username: string; password: string; titulo: string; onClose: () => void }> =
@@ -196,11 +201,16 @@ const Clientes: React.FC = () => {
     setError('');
     setCredenciales(null);
     setForm({
+      tipo: c.tipo || 'persona',
       nombre: c.nombre,
       cedula: c.cedula || '',
       telefono: c.telefono || '',
       email: c.email || '',
-      crear_acceso: false
+      crear_acceso: false,
+      ruc: c.ruc || '',
+      razon_social: c.razon_social || '',
+      email_facturacion: c.email_facturacion || '',
+      direccion_fiscal: c.direccion_fiscal || ''
     });
   };
 
@@ -209,6 +219,8 @@ const Clientes: React.FC = () => {
     setForm(FORM_VACIO);
     setError('');
   };
+
+  const esEmpresa = form.tipo === 'empresa';
 
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -299,25 +311,56 @@ const Clientes: React.FC = () => {
             )}
           </div>
 
+          <div className="grid grid-cols-2 gap-2">
+            {([['persona', 'Persona'], ['empresa', 'Empresa con flota']] as const).map(([valor, titulo]) => (
+              <button type="button" key={valor} onClick={() => setForm({ ...form, tipo: valor })} aria-pressed={form.tipo === valor}
+                className={`rounded-lg border py-2 text-sm ${form.tipo === valor ? 'border-sky-500 bg-sky-50 text-sky-700 font-medium' : 'border-slate-200 text-slate-600'}`}>
+                {titulo}
+              </button>
+            ))}
+          </div>
+
           {!editando && (
             <div className="flex items-start gap-2 text-xs text-slate-500 bg-slate-100 rounded-lg p-3">
               <Info size={15} className="shrink-0 mt-0.5" />
-              <span>
-                Los clientes normalmente se registran solos desde el sitio. Use este formulario
-                para quien llega al estacionamiento o llama por teléfono sin tener cuenta.
-              </span>
+              {esEmpresa ? (
+                <span>
+                  La empresa reserva para su flota con <b>un solo usuario</b> (el gestor), paga su tarifa pactada
+                  y no paga lavado por lavado: todo va a un <b>corte mensual</b>. Las tarifas y los cortes
+                  se manejan en <b>Empresas</b>.
+                </span>
+              ) : (
+                <span>
+                  Los clientes normalmente se registran solos desde el sitio. Use este formulario
+                  para quien llega al estacionamiento o llama por teléfono sin tener cuenta.
+                </span>
+              )}
             </div>
           )}
 
           <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })}
-            placeholder="Nombre completo" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
-          <input value={form.cedula} onChange={(e) => setForm({ ...form, cedula: e.target.value })}
-            placeholder="Cédula" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            placeholder={esEmpresa ? 'Nombre comercial' : 'Nombre completo'} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+          {esEmpresa ? (
+            <>
+              <input required value={form.ruc} onChange={(e) => setForm({ ...form, ruc: e.target.value })}
+                placeholder="RUC (13 dígitos)" inputMode="numeric" maxLength={13}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+              <input value={form.razon_social} onChange={(e) => setForm({ ...form, razon_social: e.target.value })}
+                placeholder="Razón social" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+              <input type="email" value={form.email_facturacion} onChange={(e) => setForm({ ...form, email_facturacion: e.target.value })}
+                placeholder="Email de facturación" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+              <input value={form.direccion_fiscal} onChange={(e) => setForm({ ...form, direccion_fiscal: e.target.value })}
+                placeholder="Dirección fiscal" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </>
+          ) : (
+            <input value={form.cedula} onChange={(e) => setForm({ ...form, cedula: e.target.value })}
+              placeholder="Cédula" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+          )}
           <input value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })}
             placeholder="Teléfono" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
           <input type="email" required={form.crear_acceso} value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
-            placeholder={form.crear_acceso ? 'Email (será su usuario)' : 'Email'}
+            placeholder={form.crear_acceso ? (esEmpresa ? 'Email del gestor de flota (será su usuario)' : 'Email (será su usuario)') : 'Email'}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
 
           {!editando && (
@@ -346,7 +389,7 @@ const Clientes: React.FC = () => {
           {credenciales && (
             <AvisoCredenciales {...credenciales} onClose={() => setCredenciales(null)} />
           )}
-          <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por nombre, email o cédula..."
+          <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por nombre, email, cédula o RUC..."
             className="w-full mb-4 px-3 py-2 border border-slate-300 rounded-lg" />
           {cargando ? (
             <p className="text-slate-400">Cargando...</p>
@@ -372,7 +415,10 @@ const Clientes: React.FC = () => {
                       <tr className={`hover:bg-slate-50 ${editando?.id === c.id ? 'bg-sky-50' : ''} ${activo ? '' : 'opacity-60'}`}>
                         <td className="px-4 py-3">
                           <span className="font-medium">{c.nombre}</span>
-                          <span className="block text-xs text-slate-400">{c.cedula || 'sin cédula'}</span>
+                          {c.tipo === 'empresa' && <span className="ml-2 text-xs bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded">empresa</span>}
+                          <span className="block text-xs text-slate-400">
+                            {c.tipo === 'empresa' ? `RUC ${c.ruc}` : c.cedula || 'sin cédula'}
+                          </span>
                         </td>
                         <td className="px-4 py-3">
                           {c.email || '—'}

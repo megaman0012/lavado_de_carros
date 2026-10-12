@@ -59,7 +59,8 @@ const usuarioPublico = (usuario) => ({
   id: usuario.id,
   username: usuario.username,
   rol: usuario.rol,
-  cliente: usuario.cliente && { id: usuario.cliente.id, nombre: usuario.cliente.nombre },
+  // tipo: 'empresa' habilita el portal del gestor de flota
+  cliente: usuario.cliente && { id: usuario.cliente.id, nombre: usuario.cliente.nombre, tipo: usuario.cliente.tipo },
   lavador: usuario.lavador && { id: usuario.lavador.id, nombre: usuario.lavador.nombre },
   ciudad: usuario.lavador?.ciudad || usuario.ciudad || null
 });
@@ -75,7 +76,7 @@ const login = async (req, res) => {
     const usuario = await prisma.usuario.findUnique({
       where: { username: username.toLowerCase().trim() },
       include: {
-        cliente: { select: { id: true, nombre: true, estado: true } },
+        cliente: { select: { id: true, nombre: true, estado: true, tipo: true } },
         lavador: { select: { id: true, nombre: true, estado: true, ciudad: { select: { id: true, nombre: true } } } },
         ciudad: { select: { id: true, nombre: true } }
       }
@@ -121,7 +122,7 @@ const perfil = async (req, res) => {
       where: { id: req.usuario.id },
       select: {
         id: true, username: true, rol: true, estado: true,
-        cliente: { select: { id: true, nombre: true, email: true, telefono: true } },
+        cliente: { select: { id: true, nombre: true, email: true, telefono: true, tipo: true } },
         lavador: { select: { id: true, nombre: true, ciudad: { select: { id: true, nombre: true } } } },
         ciudad: { select: { id: true, nombre: true } }
       }

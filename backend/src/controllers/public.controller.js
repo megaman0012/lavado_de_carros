@@ -65,11 +65,12 @@ const adicionales = async (req, res) => {
 };
 
 // GET /api/public/ciudades — ciudades donde hoy se puede reservar algo (con al
-// menos un sitio activo). Es lo primero que elige el cliente en la app.
+// menos un sitio activo abierto al público: los privados de empresas no cuentan).
+// Es lo primero que elige el cliente en la app.
 const ciudades = async (req, res) => {
   try {
     const lista = await prisma.ciudad.findMany({
-      where: { activa: true, estacionamientos: { some: { estado: 'activo' } } },
+      where: { activa: true, estacionamientos: { some: { estado: 'activo', tipo: { in: ['aliado', 'taller'] } } } },
       select: { id: true, nombre: true, provincia: true },
       orderBy: { nombre: 'asc' }
     });

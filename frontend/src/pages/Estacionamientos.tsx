@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { MapPin, Settings, LayoutGrid, Plus, Warehouse } from 'lucide-react';
 import api from '../services/api';
-import { Estacionamiento, Plaza } from '../types';
+import { Cliente, Estacionamiento, Plaza } from '../types';
 import FiltroCiudad, { useCiudades, useFiltroCiudad } from '../components/FiltroCiudad';
 
 const GRANULARIDADES = [15, 30, 60, 90, 120];
@@ -243,13 +243,21 @@ const Estacionamientos: React.FC = () => {
   const ciudades = useCiudades();
   const [sitios, setSitios] = useState<Estacionamiento[]>([]);
   const [form, setForm] = useState({
-    nombre: '', direccion: '', id_ciudad: 0, tipo: 'aliado' as 'aliado' | 'taller',
+    nombre: '', direccion: '', id_ciudad: 0, tipo: 'aliado' as 'aliado' | 'taller' | 'privado', id_cliente: 0,
     horario_apertura: '07:00', horario_cierre: '18:00',
     cantidad_plazas: 10, capacidad_expreso: 0, duracion_franja_min: 60
   });
   // Ciudad del sitio nuevo: la elegida en el filtro (o la del operador) si no se cambió
   const ciudadForm = form.id_ciudad || filtro.idCiudad || 0;
   const esTaller = form.tipo === 'taller';
+  // Empresas, para el parqueadero privado (se cargan al elegir ese tipo)
+  const [empresas, setEmpresas] = useState<Cliente[]>([]);
+  useEffect(() => {
+    if (form.tipo !== 'privado' || empresas.length > 0) return;
+    api.get('/clientes', { params: { tipo: 'empresa', estado: 'activo' } })
+      .then((r) => setEmpresas(r.data))
+      .catch(() => setEmpresas([]));
+  }, [form.tipo, empresas.length]);
   const [cargando, setCargando] = useState(true);
   const [modalConfigurar, setModalConfigurar] = useState<Estacionamiento | null>(null);
   const [modalPlazas, setModalPlazas] = useState<Estacionamiento | null>(null);
@@ -268,7 +276,9 @@ const Estacionamientos: React.FC = () => {
   const crear = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post('/estacionamientos', { ...form, id_ciudad: ciudadForm });
+      await api.post('/estacionamientos', {
+        ...form, id_ciudad: ciudadForm, id_cliente: form.tipo === 'privado' ? form.id_cliente : undefined
+      });
       setForm({ ...form, nombre: '', direccion: '' });
       cargar();
     } catch (err: any) {
@@ -288,8 +298,12 @@ const Estacionamientos: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <form onSubmit={crear} className="bg-white rounded-xl shadow-sm p-5 space-y-3">
           <h2 className="font-semibold text-slate-800">Nuevo sitio</h2>
-          <div className="grid grid-cols-2 gap-2">
-            {([['aliado', 'Sitio aliado', 'Edificio, condominio u oficina: expreso'], ['taller', 'Taller', 'Bahías de limpieza profunda']] as const).map(([valor, titulo, ayuda]) => (
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              ['aliado', 'Sitio aliado', 'Edificio, condominio u oficina: expreso'],
+              ['taller', 'Taller', 'Bahías de limpieza profunda'],
+              ['privado', 'Privado', 'Parqueadero propio de una empresa']
+            ] as const).map(([valor, titulo, ayuda]) => (
               <button type="button" key={valor} onClick={() => setForm({ ...form, tipo: valor, cantidad_plazas: valor === 'taller' ? 2 : 10 })}
                 className={`text-left rounded-lg border p-2 ${form.tipo === valor ? 'border-sky-500 bg-sky-50' : 'border-slate-200'}`}>
                 <span className="block text-sm font-medium text-slate-800">{titulo}</span>
@@ -297,8 +311,18 @@ const Estacionamientos: React.FC = () => {
               </button>
             ))}
           </div>
+          {form.tipo === 'privado' && (
+            <div>
+              <select required value={form.id_cliente || ''} onChange={(e) => setForm({ ...form, id_cliente: Number(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                <option value="" disabled>Empresa dueña…</option>
+                {empresas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+              <p className="text-xs text-slate-400 mt-1">Solo esa empresa lo ve y reserva ahí; no aparece al público.</p>
+            </div>
+          )}
           <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })}
-            placeholder={esTaller ? 'Nombre (ej. Taller Norte)' : 'Nombre (edificio/condominio)'}
+            placeholder={esTaller ? 'Nombre (ej. Taller Norte)' : form.tipo === 'privado' ? 'Nombre (ej. Patio de la empresa)' : 'Nombre (edificio/condominio)'}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
           <input value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })}
             placeholder="Dirección" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
@@ -386,6 +410,8 @@ const Estacionamientos: React.FC = () => {
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     {s.tipo === 'taller' ? (
                       <span className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded-full">taller</span>
+                    ) : s.tipo === 'privado' ? (
+                      <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded-full">privado · {s.empresa?.nombre}</span>
                     ) : (
                       <span className="text-xs bg-sky-50 text-sky-700 px-2 py-1 rounded-full">
                         {s.plazas?.length ?? 0} plazas
