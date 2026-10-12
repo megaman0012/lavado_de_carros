@@ -1,5 +1,8 @@
 services:
   postgres:
+    # Limite de RAM (2026-10-12). Igual en swap: el contenedor no usa swap.
+    mem_limit: 384m
+    memswap_limit: 384m
     image: postgres:15-alpine
     restart: unless-stopped
     environment:
@@ -17,6 +20,9 @@ services:
       retries: 5
 
   backend:
+    # Limite de RAM (2026-10-12). Igual en swap: el contenedor no usa swap.
+    mem_limit: 384m
+    memswap_limit: 384m
     build: ./backend
     restart: unless-stopped
     ports:
@@ -49,6 +55,9 @@ services:
       - uploads_data:/app/uploads
 
   frontend:
+    # Limite de RAM (2026-10-12). Igual en swap: el contenedor no usa swap.
+    mem_limit: 128m
+    memswap_limit: 128m
     build: ./frontend
     restart: unless-stopped
     ports:
