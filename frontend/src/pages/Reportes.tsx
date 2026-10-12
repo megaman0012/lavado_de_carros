@@ -8,6 +8,7 @@ import { descargarArchivo } from '../services/descargas';
 import { desplazarMes, fechaCorta, mesActual, nombreMes, rangoMes } from '../utils/fechas';
 import { ResumenPeriodo } from '../types';
 import { BarrasMagnitud, DetalleDatos, Panel, SerieTemporal, TablaDatos, TarjetaKPI, moneda } from '../components/graficos';
+import FiltroCiudad, { useCiudades, useFiltroCiudad } from '../components/FiltroCiudad';
 
 /**
  * Reportes — "¿cómo nos fue en este mes?"
@@ -20,9 +21,18 @@ import { BarrasMagnitud, DetalleDatos, Panel, SerieTemporal, TablaDatos, Tarjeta
  */
 
 type PorServicio = { servicio: string; modalidad?: string; cantidad: number; ingresos: number };
-type PorSitio = { estacionamiento: string; cantidad: number; ingresos: number };
+type PorSitio = { estacionamiento: string; ciudad?: string; cantidad: number; ingresos: number };
+type PorCiudad = {
+  id_ciudad: number; ciudad: string; lavados: number; facturado: number; cobrado: number;
+  ticket_promedio: number | null; canceladas: number; no_asistio: number; calificacion_promedio: number | null;
+};
 
 const Reportes: React.FC = () => {
+  const filtro = useFiltroCiudad();
+  const ciudades = useCiudades();
+  const idCiudad = filtro.idCiudad;
+  const nombreCiudad = filtro.fija?.nombre || ciudades.find((c) => c.id === idCiudad)?.nombre;
+  const [porCiudad, setPorCiudad] = useState<PorCiudad[]>([]);
   const [mes, setMes] = useState<string>(mesActual());
   const [resumen, setResumen] = useState<ResumenPeriodo | null>(null);
   const [porServicio, setPorServicio] = useState<PorServicio[]>([]);
@@ -37,16 +47,17 @@ const Reportes: React.FC = () => {
   const cargar = useCallback(() => {
     setCargando(true);
     setError('');
-    const params = rangoMes(mes);
+    const params = { ...rangoMes(mes), ...(idCiudad && { id_ciudad: idCiudad }) };
     Promise.all([
       api.get('/reportes/resumen', { params }).then((r) => setResumen(r.data)),
+      api.get('/reportes/por-ciudad', { params }).then((r) => setPorCiudad(r.data)),
       api.get('/reportes/por-servicio', { params }).then((r) => setPorServicio(r.data)),
       api.get('/reportes/por-estacionamiento', { params }).then((r) => setPorSitio(r.data)),
       api.get('/reportes/ingresos', { params }).then((r) => setIngresos(r.data))
     ])
       .catch((e: any) => setError(e.message || 'No se pudieron cargar los reportes'))
       .finally(() => setCargando(false));
-  }, [mes]);
+  }, [mes, idCiudad]);
 
   useEffect(cargar, [cargar]);
 
@@ -57,8 +68,8 @@ const Reportes: React.FC = () => {
     try {
       await descargarArchivo(
         `/reportes/exportar/${formato}`,
-        `total-clean-car-${mes}.${formato === 'excel' ? 'xlsx' : 'pdf'}`,
-        rangoMes(mes)
+        `total-clean-car-${nombreCiudad ? `${nombreCiudad.toLowerCase().replace(/\s+/g, '-')}-` : ''}${mes}.${formato === 'excel' ? 'xlsx' : 'pdf'}`,
+        { ...rangoMes(mes), ...(idCiudad && { id_ciudad: String(idCiudad) }) }
       );
     } catch (e: any) {
       alert(e.message || 'Error al exportar el reporte');
@@ -93,7 +104,8 @@ const Reportes: React.FC = () => {
         <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
           <BarChart3 className="text-sky-600" /> Reportes
         </h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <FiltroCiudad filtro={filtro} />
           <button onClick={() => exportar('excel')} disabled={exportando !== null || cargando}
             className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-50">
             <FileSpreadsheet size={16} className="text-green-600" /> {exportando === 'excel' ? 'Generando…' : 'Excel'}
@@ -152,6 +164,41 @@ const Reportes: React.FC = () => {
       )}
 
       <div className="grid grid-cols-1 gap-6">
+        {/* Panel nacional: solo cuando se mira todo el país. Clic en una ciudad = filtrar por ella */}
+        {!idCiudad && porCiudad.length > 0 && (
+          <Panel titulo="Por ciudad" nota="Clic en una ciudad para ver solo sus números">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-xs uppercase text-slate-500 border-b">
+                  <tr>
+                    <th className="text-left py-2 pr-3">Ciudad</th>
+                    <th className="text-right py-2 px-3">Lavados</th>
+                    <th className="text-right py-2 px-3">Facturado</th>
+                    <th className="text-right py-2 px-3">Cobrado</th>
+                    <th className="text-right py-2 px-3">Ticket prom.</th>
+                    <th className="text-right py-2 px-3">Cancel. / no asist.</th>
+                    <th className="text-right py-2 pl-3">Calificación</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {porCiudad.map((c) => (
+                    <tr key={c.id_ciudad} onClick={() => filtro.cambiar(c.id_ciudad)}
+                      className="cursor-pointer hover:bg-sky-50" title={`Ver solo ${c.ciudad}`}>
+                      <td className="py-2 pr-3 font-medium text-sky-700">{c.ciudad}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{c.lavados}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{moneda(c.facturado)}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{moneda(c.cobrado)}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{c.ticket_promedio != null ? moneda(c.ticket_promedio) : '—'}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{c.canceladas} / {c.no_asistio}</td>
+                      <td className="py-2 pl-3 text-right tabular-nums">{c.calificacion_promedio != null ? `${c.calificacion_promedio} ★` : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        )}
+
         <Panel titulo="Ingresos por día" nota={`Facturado en ${nombreMes(mes).toLowerCase()}`}>
           <SerieTemporal datos={ingresos} alto={300} />
           <DetalleDatos
@@ -174,7 +221,10 @@ const Reportes: React.FC = () => {
             <BarrasMagnitud datos={porSitio.map((s) => ({ etiqueta: s.estacionamiento, valor: s.cantidad }))} />
             <TablaDatos
               columnas={['Estacionamiento', 'Lavados · facturado']}
-              filas={porSitio.map((s) => ({ etiqueta: s.estacionamiento, valor: `${s.cantidad} · ${moneda(s.ingresos)}` }))}
+              filas={porSitio.map((s) => ({
+                etiqueta: !idCiudad && s.ciudad ? `${s.estacionamiento} (${s.ciudad})` : s.estacionamiento,
+                valor: `${s.cantidad} · ${moneda(s.ingresos)}`
+              }))}
             />
           </Panel>
         </div>

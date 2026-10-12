@@ -54,7 +54,8 @@ const options = {
             id: { type: 'integer' },
             nombre: { type: 'string' },
             direccion: { type: 'string' },
-            ciudad: { type: 'string' },
+            id_ciudad: { type: 'integer' },
+            tipo: { type: 'string', enum: ['aliado', 'taller'] },
             horario_apertura: { type: 'string' },
             horario_cierre: { type: 'string' },
             admite_expreso: { type: 'boolean' }

@@ -289,9 +289,8 @@ d('Reservas', () => {
       expect(segunda.status).toBe(201);
     });
 
-    test('la modalidad profunda cuenta bahías, no sitios', async () => {
-      // Hay una sola bahía: la segunda profunda a la misma hora no entra,
-      // aunque se pida en otro estacionamiento.
+    test('la modalidad profunda cuenta las bahías del taller', async () => {
+      // El taller tiene una sola bahía: la segunda profunda a la misma hora no entra.
       const profunda = (token, idVehiculo, idSitio) => con(request(app).post('/api/reservas'), token).send({
         id_vehiculo: idVehiculo,
         id_tipo_servicio: datos.servicios.profunda.id,
@@ -300,8 +299,10 @@ d('Reservas', () => {
         hora_inicio: '09:00'
       });
       const beto = await entrar('beto@prueba.local');
-      expect((await profunda(ana.token, datos.vehiculos.autoDeAna.id, datos.sitio.id)).status).toBe(201);
-      expect((await profunda(beto.token, datos.vehiculos.autoDeBeto.id, datos.sitioAmplio.id)).status).toBe(409);
+      expect((await profunda(ana.token, datos.vehiculos.autoDeAna.id, datos.taller.id)).status).toBe(201);
+      expect((await profunda(beto.token, datos.vehiculos.autoDeBeto.id, datos.taller.id)).status).toBe(409);
+      // Y no se puede esquivar pidiéndola en un edificio: la profunda es en taller
+      expect((await profunda(beto.token, datos.vehiculos.autoDeBeto.id, datos.sitioAmplio.id)).status).toBe(400);
     });
 
     test('expreso y profunda no se quitan cupo entre sí', async () => {
@@ -310,7 +311,7 @@ d('Reservas', () => {
       const profunda = await con(request(app).post('/api/reservas'), beto.token).send({
         id_vehiculo: datos.vehiculos.autoDeBeto.id,
         id_tipo_servicio: datos.servicios.profunda.id,
-        id_estacionamiento: datos.sitio.id,
+        id_estacionamiento: datos.taller.id,
         fecha: manana,
         hora_inicio: '09:00'
       });

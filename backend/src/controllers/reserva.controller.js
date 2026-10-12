@@ -10,13 +10,16 @@ const agendaService = require('../services/agenda.service');
 const notificacionService = require('../services/notificacion.service');
 const cotizacionService = require('../services/cotizacion.service');
 const fechas = require('../utils/fechas');
+const alcance = require('../utils/alcance');
 
 const incluir = {
   cliente: { select: { id: true, nombre: true, telefono: true, email: true } },
   vehiculo: { include: { tipoVehiculo: true } },
   tipoServicio: true,
   adicionales: true,
-  estacionamiento: { select: { id: true, nombre: true, direccion: true } },
+  estacionamiento: {
+    select: { id: true, nombre: true, direccion: true, tipo: true, id_ciudad: true, ciudad: { select: { id: true, nombre: true } } }
+  },
   plaza: true,
   asignaciones: { include: { lavador: { select: { id: true, nombre: true } } } },
   pagos: true,
@@ -83,16 +86,20 @@ const crear = async (req, res) => {
     });
     const { servicio } = cotizacion;
 
-    if (servicio.modalidad === 'expreso' && !id_estacionamiento) {
-      return res.status(400).json({ success: false, message: 'Debe indicar el estacionamiento para un servicio expreso' });
+    // Toda reserva es en un sitio: el estacionamiento (expreso) o el taller de
+    // la ciudad (profunda). De él salen la ciudad, el horario y la capacidad.
+    if (!parseInt(id_estacionamiento)) {
+      return res.status(400).json({
+        success: false,
+        message: servicio.modalidad === 'profunda' ? 'Debe indicar el taller' : 'Debe indicar el estacionamiento para un servicio expreso'
+      });
     }
-    let estacionamiento = null;
-    if (id_estacionamiento) {
-      estacionamiento = await prisma.estacionamiento.findUnique({ where: { id: parseInt(id_estacionamiento) } });
-      if (!estacionamiento || estacionamiento.estado !== 'activo') {
-        return res.status(400).json({ success: false, message: 'Estacionamiento no disponible' });
-      }
+    const estacionamiento = await prisma.estacionamiento.findUnique({ where: { id: parseInt(id_estacionamiento) } });
+    if (!estacionamiento) {
+      return res.status(400).json({ success: false, message: 'Estacionamiento no disponible' });
     }
+    agendaService.validarSitio(estacionamiento, servicio.modalidad);
+    if (!alcance.puedeVer(req.usuario, estacionamiento.id_ciudad)) return alcance.fueraDeAlcance(res);
 
     const dia = fechas.fechaDia(fecha);
     if (!dia) {
@@ -110,8 +117,8 @@ const crear = async (req, res) => {
 
     const inicioMin = agendaService.aMinutos(hora_inicio);
     const finMin = inicioMin + cotizacion.duracion_min;
-    const apertura = estacionamiento?.horario_apertura || '07:00';
-    const cierre = estacionamiento?.horario_cierre || '18:00';
+    const apertura = estacionamiento.horario_apertura || '07:00';
+    const cierre = estacionamiento.horario_cierre || '18:00';
     if (inicioMin < agendaService.aMinutos(apertura) || finMin > agendaService.aMinutos(cierre)) {
       return res.status(400).json({
         success: false,
@@ -128,7 +135,7 @@ const crear = async (req, res) => {
         horaInicio: hora_inicio,
         horaFin: horaFinStr,
         modalidad: servicio.modalidad,
-        idEstacionamiento: id_estacionamiento,
+        estacionamiento,
         db: tx
       });
       const capacidad = await agendaService.obtenerCapacidad(servicio.modalidad, estacionamiento, tx);
@@ -146,7 +153,7 @@ const crear = async (req, res) => {
       let id_suscripcion = null;
       let precioServicio = cotizacion.precio_servicio;
       let planCubre = null;
-      if (id_estacionamiento) {
+      if (estacionamiento.tipo !== 'taller') {
         const suscripcion = await tx.suscripcion.findFirst({
           where: { id_estacionamiento: parseInt(id_estacionamiento), estado: 'activa', plan: { modalidad: servicio.modalidad } },
           include: { plan: true }
@@ -173,7 +180,7 @@ const crear = async (req, res) => {
           id_cliente,
           id_vehiculo: vehiculo.id,
           id_tipo_servicio: servicio.id,
-          id_estacionamiento: id_estacionamiento ? parseInt(id_estacionamiento) : null,
+          id_estacionamiento: estacionamiento.id,
           id_suscripcion,
           modalidad: servicio.modalidad,
           fecha: dia,
@@ -278,6 +285,8 @@ const listar = async (req, res) => {
   try {
     const { fecha, estado, modalidad, id_estacionamiento } = req.query;
     const where = {};
+    const ciudad = alcance.ciudadFiltro(req);
+    if (ciudad) where.estacionamiento = { is: { id_ciudad: ciudad } };
     if (fecha) {
       const d = fechas.fechaDia(fecha);
       if (!d) return res.status(400).json({ success: false, message: 'Fecha inválida' });
@@ -443,7 +452,7 @@ const asignarLavador = async (req, res) => {
 
     const reserva = await prisma.reserva.findUnique({
       where: { id: parseInt(id) },
-      include: { asignaciones: true }
+      include: { asignaciones: true, estacionamiento: { select: { id_ciudad: true } } }
     });
     if (!reserva) return res.status(404).json({ success: false, message: 'Reserva no encontrada' });
 
@@ -456,6 +465,9 @@ const asignarLavador = async (req, res) => {
       lavador = await prisma.lavador.findUnique({ where: { id: parseInt(id_lavador) } });
       if (!lavador || lavador.estado !== 'activo') {
         return res.status(400).json({ success: false, message: 'Lavador inválido o inactivo' });
+      }
+      if (reserva.estacionamiento && lavador.id_ciudad !== reserva.estacionamiento.id_ciudad) {
+        return res.status(400).json({ success: false, message: `${lavador.nombre} trabaja en otra ciudad` });
       }
 
       // Anti doble-asignación: sin otro trabajo solapado ese día

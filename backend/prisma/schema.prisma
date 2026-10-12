@@ -1,6 +1,7 @@
 // Schema de Base de Datos - Total Clean Car (sistema de lavado de vehículos)
 // Dominio: estacionamientos, reservas de lavado, agenda con bloqueo de franjas
 // Roles: admin | operador | lavador | cliente
+// Operación nacional por ciudades (ver model Ciudad)
 
 generator client {
   provider = "prisma-client-js"
@@ -20,11 +21,15 @@ model Usuario {
   rol        String   @default("cliente") // admin | operador | lavador | cliente
   id_cliente Int?     @unique
   id_lavador Int?     @unique
+  // Solo para operadores: la ciudad que atienden. null = alcance nacional (el
+  // admin siempre lo tiene). Ver utils/alcance.js.
+  id_ciudad  Int?
   estado     String   @default("activo")
   createdAt  DateTime @default(now())
 
   cliente  Cliente?       @relation(fields: [id_cliente], references: [id])
   lavador  Lavador?       @relation(fields: [id_lavador], references: [id])
+  ciudad   Ciudad?        @relation(fields: [id_ciudad], references: [id])
   sesiones RefreshToken[]
 }
 
@@ -102,13 +107,34 @@ model TipoVehiculo {
   precios   PrecioServicio[]
 }
 
+// ==================== CIUDADES ====================
+
+// La operación es nacional y se organiza por ciudad: cada sitio, lavador y
+// operador pertenece a una. La agenda nunca mezcla ciudades: un lavador de
+// Guayaquil no abre cupos en Quito ni una bahía de un taller atiende al otro.
+model Ciudad {
+  id        Int      @id @default(autoincrement())
+  nombre    String   @unique
+  provincia String?
+  activa    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  estacionamientos Estacionamiento[]
+  lavadores        Lavador[]
+  usuarios         Usuario[]
+  bloqueos         AsignacionAgenda[]
+}
+
 // ==================== SITIOS Y ESPACIOS ====================
 
 model Estacionamiento {
   id               Int     @id @default(autoincrement())
   nombre           String
   direccion        String?
-  ciudad           String?
+  id_ciudad        Int
+  // aliado = edificio/condominio/oficina donde se hace el expreso;
+  // taller = tiene las bahías de la limpieza profunda de su ciudad.
+  tipo             String  @default("aliado")
   contacto         String?
   horario_apertura String  @default("07:00")
   horario_cierre   String  @default("18:00")
@@ -120,11 +146,13 @@ model Estacionamiento {
   duracion_franja_min Int @default(60)
   estado           String  @default("activo")
 
+  ciudad        Ciudad             @relation(fields: [id_ciudad], references: [id])
   plazas        Plaza[]
   reservas      Reserva[]
   suscripciones Suscripcion[]
+  bloqueos      AsignacionAgenda[]
 
-  @@index([ciudad])
+  @@index([id_ciudad])
 }
 
 // ==================== PLANES PARA EDIFICIOS/CONDOMINIOS ====================
@@ -238,10 +266,16 @@ model Lavador {
   nombre  String
   cedula  String? @unique
   telefono String?
+  // Ciudad donde trabaja: suma capacidad expreso solo en los sitios de ella y
+  // solo se le asignan reservas de ella.
+  id_ciudad Int
   estado  String  @default("activo")
 
+  ciudad       Ciudad             @relation(fields: [id_ciudad], references: [id])
   usuario      Usuario?
   asignaciones AsignacionAgenda[]
+
+  @@index([id_ciudad])
 }
 
 // ==================== NÚCLEO OPERATIVO ====================
@@ -289,11 +323,15 @@ model Reserva {
 
 // AGENDA: cada fila = franja ocupada. La disponibilidad se calcula
 // contando filas solapadas vs capacidad (lavadores o bahías).
-// id_reserva null + nota = bloqueo manual (mantiene, imprevistos).
+// id_reserva null + nota = bloqueo manual (mantiene, imprevistos). El alcance
+// del bloqueo lo dan id_estacionamiento (un sitio) o id_ciudad (toda la
+// ciudad); sin ninguno de los dos es nacional (un feriado, por ejemplo).
 model AsignacionAgenda {
   id          Int      @id @default(autoincrement())
   id_reserva  Int?
   id_lavador  Int?
+  id_ciudad   Int?
+  id_estacionamiento Int?
   fecha       DateTime
   hora_inicio String
   hora_fin    String
@@ -302,6 +340,8 @@ model AsignacionAgenda {
 
   reserva Reserva? @relation(fields: [id_reserva], references: [id])
   lavador Lavador? @relation(fields: [id_lavador], references: [id])
+  ciudad  Ciudad?  @relation(fields: [id_ciudad], references: [id])
+  estacionamiento Estacionamiento? @relation(fields: [id_estacionamiento], references: [id])
 
   @@index([fecha])
   @@index([id_lavador])

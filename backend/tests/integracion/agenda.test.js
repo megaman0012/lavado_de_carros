@@ -121,14 +121,22 @@ d('Agenda', () => {
       expect(amplio.body.data.capacidad).toBe(2);
     });
 
-    test('sin capacidad configurada, el expreso usa los lavadores activos', async () => {
+    test('sin capacidad configurada, el expreso usa los lavadores activos de SU ciudad', async () => {
       await bd.prisma.estacionamiento.update({ where: { id: datos.sitio.id }, data: { capacidad_expreso: 0 } });
       const uno = await disponibilidad({ fecha: manana, modalidad: 'expreso', id_estacionamiento: datos.sitio.id });
-      expect(uno.body.data.capacidad).toBe(1); // hay un solo lavador en el sembrado
+      // Hay dos lavadores en el sembrado, pero uno es de Quito: no cuenta en Guayaquil
+      expect(uno.body.data.capacidad).toBe(1);
 
-      await bd.prisma.lavador.create({ data: { nombre: 'Marta Lavadora' } });
+      await bd.prisma.lavador.create({ data: { nombre: 'Marta Lavadora', id_ciudad: datos.ciudades.guayaquil.id } });
       const dos = await disponibilidad({ fecha: manana, modalidad: 'expreso', id_estacionamiento: datos.sitio.id });
       expect(dos.body.data.capacidad).toBe(2);
+
+      // Un lavador nuevo en Quito no le suma a Guayaquil
+      await bd.prisma.lavador.create({ data: { nombre: 'Otro Quiteño', id_ciudad: datos.ciudades.quito.id } });
+      const igual = await disponibilidad({ fecha: manana, modalidad: 'expreso', id_estacionamiento: datos.sitio.id });
+      expect(igual.body.data.capacidad).toBe(2);
+      const enQuito = await disponibilidad({ fecha: manana, modalidad: 'expreso', id_estacionamiento: datos.sitioQuito.id });
+      expect(enQuito.body.data.capacidad).toBe(2);
     });
 
     test('suspender a un lavador baja la capacidad del expreso', async () => {
@@ -139,13 +147,39 @@ d('Agenda', () => {
       expect(r.body.data.franjas.every((f) => !f.disponible)).toBe(true);
     });
 
-    test('la capacidad de la profunda son las bahías disponibles', async () => {
-      const r = await disponibilidad({ fecha: manana, modalidad: 'profunda', duracion_min: 120 });
+    test('la capacidad de la profunda son las bahías disponibles del taller', async () => {
+      const r = await disponibilidad({ fecha: manana, modalidad: 'profunda', duracion_min: 120, id_estacionamiento: datos.taller.id });
       expect(r.body.data.capacidad).toBe(1);
 
       await bd.prisma.plaza.updateMany({ where: { tipo: 'bahia_lavado' }, data: { estado: 'mantenimiento' } });
-      const enMantenimiento = await disponibilidad({ fecha: manana, modalidad: 'profunda', duracion_min: 120 });
+      const enMantenimiento = await disponibilidad({
+        fecha: manana, modalidad: 'profunda', duracion_min: 120, id_estacionamiento: datos.taller.id
+      });
       expect(enMantenimiento.body.data.capacidad).toBe(0);
+    });
+
+    test('las bahías de un taller de otra ciudad no le suman a este', async () => {
+      const tallerQuito = await bd.prisma.estacionamiento.create({
+        data: { nombre: 'Taller Quito', id_ciudad: datos.ciudades.quito.id, tipo: 'taller', admite_expreso: false }
+      });
+      await bd.prisma.plaza.createMany({
+        data: [1, 2, 3].map((n) => ({ id_estacionamiento: tallerQuito.id, codigo: `B-0${n}`, tipo: 'bahia_lavado' }))
+      });
+      const gye = await disponibilidad({ fecha: manana, modalidad: 'profunda', duracion_min: 120, id_estacionamiento: datos.taller.id });
+      const uio = await disponibilidad({ fecha: manana, modalidad: 'profunda', duracion_min: 120, id_estacionamiento: tallerQuito.id });
+      expect(gye.body.data.capacidad).toBe(1);
+      expect(uio.body.data.capacidad).toBe(3);
+    });
+
+    test('profunda sin taller, o en un sitio que no es taller: 400', async () => {
+      const sinSitio = await disponibilidad({ fecha: manana, modalidad: 'profunda', duracion_min: 120 });
+      expect(sinSitio.status).toBe(400);
+      const enEdificio = await disponibilidad({
+        fecha: manana, modalidad: 'profunda', duracion_min: 120, id_estacionamiento: datos.sitio.id
+      });
+      expect(enEdificio.status).toBe(400);
+      const expresoEnTaller = await disponibilidad({ fecha: manana, modalidad: 'expreso', id_estacionamiento: datos.taller.id });
+      expect(expresoEnTaller.status).toBe(400);
     });
 
     test('un día pasado no tiene funciones a la venta', async () => {

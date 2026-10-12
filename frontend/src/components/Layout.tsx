@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, CalendarDays, CalendarCheck, Droplets, Car,
-  Users, MapPin, Wrench, BarChart3, LogOut, Menu, X, Home, Building2, BadgeCheck
+  Users, MapPin, Wrench, BarChart3, LogOut, Menu, X, Home, Building2, BadgeCheck, Map, UserCog
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth, rutaInicio } from '../context/AuthContext';
@@ -30,7 +30,9 @@ const menuItems: MenuItem[] = [
   { to: '/lavadores', label: 'Lavadores', icon: <Wrench size={20} />, roles: ['admin', 'operador'] },
   { to: '/pagos-por-verificar', label: 'Pagos por verificar', icon: <BadgeCheck size={20} />, roles: ['admin', 'operador'], contador: 'pagosPendientes' },
   { to: '/reportes', label: 'Reportes', icon: <BarChart3 size={20} />, roles: ['admin', 'operador'] },
-  { to: '/planes', label: 'Planes', icon: <Building2 size={20} />, roles: ['admin', 'operador'] }
+  { to: '/planes', label: 'Planes', icon: <Building2 size={20} />, roles: ['admin', 'operador'] },
+  { to: '/ciudades', label: 'Ciudades', icon: <Map size={20} />, roles: ['admin'] },
+  { to: '/usuarios', label: 'Usuarios', icon: <UserCog size={20} />, roles: ['admin'] }
 ];
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -104,7 +106,10 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div className="flex items-center justify-between">
             <div className="min-w-0">
               <p className="text-sm font-medium truncate">{usuario?.username}</p>
-              <p className="text-xs text-slate-400 capitalize">{usuario?.rol}</p>
+              <p className="text-xs text-slate-400">
+                <span className="capitalize">{usuario?.rol}</span>
+                {usuario?.ciudad ? ` · ${usuario.ciudad.nombre}` : usuario?.rol === 'operador' ? ' · nacional' : ''}
+              </p>
             </div>
             <button onClick={handleLogout} title="Cerrar sesión" className="text-slate-400 hover:text-red-400">
               <LogOut size={20} />

@@ -51,6 +51,19 @@ const registrar = async (req, res) => {
   }
 };
 
+/**
+ * Lo que el frontend sabe del usuario. `ciudad` es la que limita lo que ve
+ * (la del operador o la del lavador); null = alcance nacional.
+ */
+const usuarioPublico = (usuario) => ({
+  id: usuario.id,
+  username: usuario.username,
+  rol: usuario.rol,
+  cliente: usuario.cliente && { id: usuario.cliente.id, nombre: usuario.cliente.nombre },
+  lavador: usuario.lavador && { id: usuario.lavador.id, nombre: usuario.lavador.nombre },
+  ciudad: usuario.lavador?.ciudad || usuario.ciudad || null
+});
+
 const login = async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -63,7 +76,8 @@ const login = async (req, res) => {
       where: { username: username.toLowerCase().trim() },
       include: {
         cliente: { select: { id: true, nombre: true, estado: true } },
-        lavador: { select: { id: true, nombre: true, estado: true } }
+        lavador: { select: { id: true, nombre: true, estado: true, ciudad: { select: { id: true, nombre: true } } } },
+        ciudad: { select: { id: true, nombre: true } }
       }
     });
 
@@ -92,13 +106,7 @@ const login = async (req, res) => {
       success: true,
       data: {
         ...sesion,
-        usuario: {
-          id: usuario.id,
-          username: usuario.username,
-          rol: usuario.rol,
-          cliente: usuario.cliente && { id: usuario.cliente.id, nombre: usuario.cliente.nombre },
-          lavador: usuario.lavador && { id: usuario.lavador.id, nombre: usuario.lavador.nombre }
-        }
+        usuario: usuarioPublico(usuario)
       }
     });
   } catch (error) {
@@ -114,7 +122,8 @@ const perfil = async (req, res) => {
       select: {
         id: true, username: true, rol: true, estado: true,
         cliente: { select: { id: true, nombre: true, email: true, telefono: true } },
-        lavador: { select: { id: true, nombre: true } }
+        lavador: { select: { id: true, nombre: true, ciudad: { select: { id: true, nombre: true } } } },
+        ciudad: { select: { id: true, nombre: true } }
       }
     });
     if (!usuario) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
@@ -139,13 +148,7 @@ const refrescar = async (req, res) => {
       success: true,
       data: {
         ...sesion,
-        usuario: {
-          id: usuario.id,
-          username: usuario.username,
-          rol: usuario.rol,
-          cliente: usuario.cliente && { id: usuario.cliente.id, nombre: usuario.cliente.nombre },
-          lavador: usuario.lavador && { id: usuario.lavador.id, nombre: usuario.lavador.nombre }
-        }
+        usuario: usuarioPublico(usuario)
       }
     });
   } catch (error) {

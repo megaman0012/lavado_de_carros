@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { CalendarCheck, CheckCircle2, PlayCircle, Flag, XCircle, UserPlus, Camera, Trash2, Wallet, FileText, Plus, Paperclip, Check, Clock3 } from 'lucide-react';
 import api from '../services/api';
+import FiltroCiudad, { useFiltroCiudad } from '../components/FiltroCiudad';
 import { useAuth } from '../context/AuthContext';
 import { descargarActa } from '../services/descargas';
 import ModalNuevaReserva from '../components/ModalNuevaReserva';
@@ -31,11 +32,13 @@ const ModalAsignar: React.FC<{ reserva: Reserva; onClose: () => void; onDone: ()
 
   const asignadoActual = reserva.asignaciones?.find((a) => a.lavador)?.lavador?.id;
 
+  // Solo los lavadores de la ciudad del sitio: a uno de otra ciudad el servidor lo rechaza
+  const ciudadReserva = reserva.estacionamiento?.id_ciudad;
   useEffect(() => {
-    api.get('/lavadores', { params: { estado: 'activo' } })
+    api.get('/lavadores', { params: { estado: 'activo', ...(ciudadReserva && { id_ciudad: ciudadReserva }) } })
       .then((r) => setLavadores(r.data))
       .catch(() => setLavadores([]));
-  }, []);
+  }, [ciudadReserva]);
 
   const guardar = async (id_lavador: number | null) => {
     setGuardando(true);
@@ -409,6 +412,8 @@ const ModalPago: React.FC<{ reserva: Reserva; onClose: () => void; onDone: () =>
 
 // ==================== PÁGINA RESERVAS ====================
 const Reservas: React.FC = () => {
+  const filtro = useFiltroCiudad();
+  const idCiudad = filtro.idCiudad;
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [filtros, setFiltros] = useState({ fecha: hoyISO(), estado: '', modalidad: '' });
   const [cargando, setCargando] = useState(true);
@@ -424,11 +429,12 @@ const Reservas: React.FC = () => {
     if (filtros.fecha) params.fecha = filtros.fecha;
     if (filtros.estado) params.estado = filtros.estado;
     if (filtros.modalidad) params.modalidad = filtros.modalidad;
+    if (idCiudad) params.id_ciudad = idCiudad;
     api.get('/reservas', { params })
       .then((r) => setReservas(r.data))
       .catch(() => setReservas([]))
       .finally(() => setCargando(false));
-  }, [filtros]);
+  }, [filtros, idCiudad]);
 
   useEffect(cargar, [cargar]);
 
@@ -466,6 +472,7 @@ const Reservas: React.FC = () => {
 
       {/* Filtros */}
       <div className="bg-white rounded-xl shadow-sm p-4 mb-6 flex flex-wrap gap-3">
+        <FiltroCiudad filtro={filtro} />
         <input type="date" value={filtros.fecha} onChange={(e) => setFiltros({ ...filtros, fecha: e.target.value })}
           className="px-3 py-2 border border-slate-300 rounded-lg" />
         <select value={filtros.estado} onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}
@@ -512,6 +519,11 @@ const Reservas: React.FC = () => {
                       </span>
                       {(r.adicionales?.length ?? 0) > 0 && (
                         <span className="block text-xs text-slate-400">+ {r.adicionales!.map((a) => a.nombre).join(', ')}</span>
+                      )}
+                      {r.estacionamiento && (
+                        <span className="block text-xs text-slate-400">
+                          📍 {r.estacionamiento.nombre}{!idCiudad && r.estacionamiento.ciudad && ` · ${r.estacionamiento.ciudad.nombre}`}
+                        </span>
                       )}
                     </td>
                     <td className="px-4 py-3">

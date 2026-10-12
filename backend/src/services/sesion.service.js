@@ -134,7 +134,8 @@ const refrescar = async (tokenPlano) => {
     where: { id: guardado.id_usuario },
     include: {
       cliente: { select: { id: true, nombre: true, estado: true } },
-      lavador: { select: { id: true, nombre: true, estado: true } }
+      lavador: { select: { id: true, nombre: true, estado: true, ciudad: { select: { id: true, nombre: true } } } },
+      ciudad: { select: { id: true, nombre: true } }
     }
   });
   const suspendido = !usuario || usuario.estado !== 'activo' ||

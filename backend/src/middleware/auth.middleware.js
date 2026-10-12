@@ -31,7 +31,7 @@ const authenticate = async (req, res, next) => {
   try {
     const usuario = await prisma.usuario.findUnique({
       where: { id: decoded.id },
-      include: { cliente: { select: { estado: true } }, lavador: { select: { estado: true } } }
+      include: { cliente: { select: { estado: true } }, lavador: { select: { estado: true, id_ciudad: true } } }
     });
 
     if (!usuario || usuario.estado !== 'activo') {
@@ -44,7 +44,8 @@ const authenticate = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'La cuenta está suspendida' });
     }
 
-    req.usuario = decoded;
+    // La ciudad sale de la base y no del token: ver utils/alcance.js
+    req.usuario = { ...decoded, id_ciudad: usuario.lavador?.id_ciudad ?? usuario.id_ciudad ?? null };
     next();
   } catch (error) {
     console.error('Error validando la sesión:', error);

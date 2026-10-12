@@ -6,6 +6,30 @@ export interface Usuario {
   rol: 'admin' | 'operador' | 'lavador' | 'cliente';
   cliente?: { id: number; nombre: string };
   lavador?: { id: number; nombre: string };
+  // Ciudad que limita lo que ve (operador de ciudad, lavador); null = nacional
+  ciudad?: { id: number; nombre: string } | null;
+}
+
+// La operación es nacional y se organiza por ciudad
+export interface Ciudad {
+  id: number;
+  nombre: string;
+  provincia?: string | null;
+  activa?: boolean;
+  _count?: { estacionamientos: number; lavadores: number; usuarios: number };
+}
+
+// Cuenta de administrador u operador (pantalla Usuarios)
+export interface UsuarioInterno {
+  id: number;
+  username: string;
+  rol: 'admin' | 'operador';
+  estado: string;
+  id_ciudad: number | null;
+  ciudad: { id: number; nombre: string } | null;
+  createdAt?: string;
+  // Solo al crear: se muestra una vez
+  password_temporal?: string | null;
 }
 
 // Moto, liviano, SUV... Define qué servicios y a qué precio contrata un vehículo
@@ -73,7 +97,10 @@ export interface Estacionamiento {
   id: number;
   nombre: string;
   direccion?: string | null;
-  ciudad?: string | null;
+  id_ciudad: number;
+  ciudad?: { id: number; nombre: string };
+  // aliado = edificio/condominio (expreso); taller = bahías de la limpieza profunda
+  tipo?: 'aliado' | 'taller';
   horario_apertura?: string;
   horario_cierre?: string;
   admite_expreso?: boolean;
@@ -116,6 +143,8 @@ export interface Lavador {
   nombre: string;
   cedula?: string | null;
   telefono?: string | null;
+  id_ciudad: number;
+  ciudad?: { id: number; nombre: string };
   estado: string;
   // Cuenta con la que el lavador entra a "Mis trabajos"; null = no puede ingresar
   usuario?: { id: number; username: string; estado: string } | null;
@@ -141,6 +170,11 @@ export interface AsignacionAgenda {
   hora_fin: string;
   estado: string;
   nota?: string | null;
+  // Alcance de un bloqueo manual: sitio, ciudad, o ninguno = nacional
+  id_ciudad?: number | null;
+  id_estacionamiento?: number | null;
+  ciudad?: { id: number; nombre: string } | null;
+  estacionamiento?: { id: number; nombre: string } | null;
   lavador?: { id: number; nombre: string } | null;
   reserva?: {
     id: number;
@@ -150,7 +184,7 @@ export interface AsignacionAgenda {
     cliente?: { nombre: string; telefono?: string };
     vehiculo?: { placa: string; marca?: string; modelo?: string; color?: string };
     tipoServicio?: { nombre: string };
-    estacionamiento?: { nombre: string } | null;
+    estacionamiento?: { nombre: string; ciudad?: { nombre: string } } | null;
   } | null;
 }
 
@@ -277,6 +311,6 @@ export interface Suscripcion {
   fecha_cancelacion?: string | null;
   estado: 'activa' | 'cancelada';
   plan?: Plan;
-  estacionamiento?: { id: number; nombre: string };
+  estacionamiento?: { id: number; nombre: string; ciudad?: { id: number; nombre: string } };
   uso_mes_actual?: number;
 }

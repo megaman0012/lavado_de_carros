@@ -31,6 +31,15 @@ async function main() {
 
   console.log('✅ Usuarios base creados (admin/admin123, operador/operador123)');
 
+  // ==================== CIUDADES ====================
+  // Todo (sitios, lavadores, operadores) pertenece a una ciudad. El demo arranca en Quito.
+  const quito = await prisma.ciudad.upsert({
+    where: { nombre: 'Quito' },
+    update: {},
+    create: { nombre: 'Quito', provincia: 'Pichincha' }
+  });
+  console.log('✅ Ciudad base: Quito');
+
   // ==================== LAVADORES ====================
   const nombresLavadores = ['Carlos Pérez', 'Luis Gómez', 'Ana Torres'];
   const lavadores = [];
@@ -39,7 +48,7 @@ async function main() {
     let lavador = await prisma.lavador.findFirst({ where: { nombre: nombresLavadores[i] } });
     if (!lavador) {
       lavador = await prisma.lavador.create({
-        data: { nombre: nombresLavadores[i], telefono: `+59399${String(100000 + i)}` }
+        data: { nombre: nombresLavadores[i], telefono: `+59399${String(100000 + i)}`, id_ciudad: quito.id }
       });
     }
     await prisma.usuario.upsert({
@@ -108,9 +117,9 @@ async function main() {
 
   // ==================== ESTACIONAMIENTOS DEMO ====================
   const sitios = [
-    { nombre: 'Edificio Central Park', direccion: 'Av. Principal 123', ciudad: 'Quito' },
-    { nombre: 'Condominio Los Alamos', direccion: 'Calle 5 y Av. 10', ciudad: 'Quito' },
-    { nombre: 'Torre Empresarial Norte', direccion: 'Av. Amazonas N36-152', ciudad: 'Quito' }
+    { nombre: 'Edificio Central Park', direccion: 'Av. Principal 123', id_ciudad: quito.id },
+    { nombre: 'Condominio Los Alamos', direccion: 'Calle 5 y Av. 10', id_ciudad: quito.id },
+    { nombre: 'Torre Empresarial Norte', direccion: 'Av. Amazonas N36-152', id_ciudad: quito.id }
   ];
   for (const sitio of sitios) {
     const existe = await prisma.estacionamiento.findFirst({ where: { nombre: sitio.nombre } });
@@ -136,7 +145,8 @@ async function main() {
       data: {
         nombre: 'Taller Central - Bahías',
         direccion: 'Av. Industrial 45',
-        ciudad: 'Quito',
+        id_ciudad: quito.id,
+        tipo: 'taller',
         admite_expreso: false
       }
     });

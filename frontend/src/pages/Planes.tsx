@@ -71,7 +71,9 @@ const Planes: React.FC = () => {
     }
   };
 
-  const sitiosSinSuscripcion = sitios.filter((s) => !suscripciones.some((sub) => sub.id_estacionamiento === s.id));
+  // Los planes son para sitios aliados (edificios, condominios), nunca para un taller
+  const sitiosSinSuscripcion = sitios.filter((s) =>
+    s.tipo !== 'taller' && !suscripciones.some((sub) => sub.id_estacionamiento === s.id));
 
   if (cargando) {
     return <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-sky-600" /></div>;
@@ -126,7 +128,9 @@ const Planes: React.FC = () => {
             onChange={(e) => setAsignar({ ...asignar, id_estacionamiento: e.target.value ? Number(e.target.value) : '' })}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg">
             <option value="">Seleccione un estacionamiento…</option>
-            {sitiosSinSuscripcion.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            {sitiosSinSuscripcion.map((s) => (
+              <option key={s.id} value={s.id}>{s.nombre}{s.ciudad ? ` · ${s.ciudad.nombre}` : ''}</option>
+            ))}
           </select>
           <select required value={asignar.id_plan}
             onChange={(e) => setAsignar({ ...asignar, id_plan: e.target.value ? Number(e.target.value) : '' })}
@@ -191,7 +195,10 @@ const Planes: React.FC = () => {
           <div key={s.id} className="bg-white rounded-xl shadow-sm p-5">
             <div className="flex items-start justify-between">
               <div>
-                <p className="font-semibold text-slate-800">{s.estacionamiento?.nombre}</p>
+                <p className="font-semibold text-slate-800">
+                  {s.estacionamiento?.nombre}
+                  {s.estacionamiento?.ciudad && <span className="text-xs font-normal text-slate-400"> · {s.estacionamiento.ciudad.nombre}</span>}
+                </p>
                 <p className="text-sm text-slate-500">{s.plan?.nombre} · ${s.plan?.precio_mensual}/mes</p>
               </div>
               <button onClick={() => cancelarSuscripcion(s.id)} title="Cancelar suscripción" className="p-1.5 text-red-500 hover:bg-red-50 rounded">

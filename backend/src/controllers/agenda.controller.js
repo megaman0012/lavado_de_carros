@@ -6,6 +6,7 @@
 const prisma = require('../db');
 const agendaService = require('../services/agenda.service');
 const fechas = require('../utils/fechas');
+const alcance = require('../utils/alcance');
 
 // GET /api/agenda/disponibilidad?fecha=&modalidad=&duracion_min=&id_estacionamiento=
 const disponibilidad = async (req, res) => {
@@ -43,8 +44,20 @@ const vistaDia = async (req, res) => {
     const dia = fechas.fechaDia(fecha);
     if (!dia) return res.status(400).json({ success: false, message: 'Fecha inválida' });
 
+    // Lo de la ciudad (reservas de sus sitios y bloqueos de ella o de sus sitios)
+    // más los bloqueos nacionales, que también la afectan.
+    const ciudad = alcance.ciudadFiltro(req);
+    const deLaCiudad = ciudad && {
+      OR: [
+        { reserva: { is: { estacionamiento: { is: { id_ciudad: ciudad } } } } },
+        { id_reserva: null, id_ciudad: ciudad },
+        { id_reserva: null, estacionamiento: { is: { id_ciudad: ciudad } } },
+        { id_reserva: null, id_ciudad: null, id_estacionamiento: null }
+      ]
+    };
+
     const asignaciones = await prisma.asignacionAgenda.findMany({
-      where: { fecha: dia },
+      where: { fecha: dia, ...deLaCiudad },
       include: {
         lavador: { select: { id: true, nombre: true } },
         reserva: {
@@ -54,20 +67,24 @@ const vistaDia = async (req, res) => {
             cliente: { select: { nombre: true, telefono: true } },
             vehiculo: { select: { placa: true, marca: true, modelo: true, color: true } },
             tipoServicio: { select: { nombre: true } },
-            estacionamiento: { select: { nombre: true } }
+            estacionamiento: { select: { nombre: true, ciudad: { select: { nombre: true } } } }
           }
-        }
+        },
+        ciudad: { select: { id: true, nombre: true } },
+        estacionamiento: { select: { id: true, nombre: true } }
       },
       orderBy: { hora_inicio: 'asc' }
     });
 
-    const capacidadExpreso = await agendaService.obtenerCapacidad('expreso');
-    const capacidadProfunda = await agendaService.obtenerCapacidad('profunda');
+    // Sin ciudad, es el total del país (vista nacional)
+    const capacidadExpreso = await agendaService.obtenerCapacidad('expreso', null, prisma, ciudad);
+    const capacidadProfunda = await agendaService.obtenerCapacidad('profunda', null, prisma, ciudad);
 
     res.json({
       success: true,
       data: {
         fecha: fechas.aISO(dia),
+        id_ciudad: ciudad || null,
         capacidades: { expreso: capacidadExpreso, profunda: capacidadProfunda },
         asignaciones
       }
@@ -80,9 +97,26 @@ const vistaDia = async (req, res) => {
 
 // POST /api/agenda/bloqueos — bloqueo manual de franja (mantenimiento, imprevistos)
 // Crea una ocupación sin reserva asociada; bloquea expreso Y profunda en esa franja.
+// Alcance: id_estacionamiento (un sitio), id_ciudad (toda la ciudad) o ninguno
+// (todo el país: solo quien tiene alcance nacional). Un operador de ciudad que
+// no indica nada bloquea su ciudad, nunca el país.
 const crearBloqueo = async (req, res) => {
   try {
     const { fecha, hora_inicio, hora_fin, nota } = req.body;
+    let id_estacionamiento = alcance.aEntero(req.body.id_estacionamiento);
+    let id_ciudad = alcance.aEntero(req.body.id_ciudad);
+
+    if (id_estacionamiento) {
+      const est = await prisma.estacionamiento.findUnique({ where: { id: id_estacionamiento } });
+      if (!est) return res.status(400).json({ success: false, message: 'Estacionamiento inexistente' });
+      id_ciudad = est.id_ciudad;
+    } else if (id_ciudad) {
+      const c = await prisma.ciudad.findUnique({ where: { id: id_ciudad } });
+      if (!c) return res.status(400).json({ success: false, message: 'Ciudad inexistente' });
+    } else {
+      id_ciudad = alcance.ciudadFija(req.usuario);
+    }
+    if (!alcance.puedeVer(req.usuario, id_ciudad)) return alcance.fueraDeAlcance(res);
 
     if (!fecha || !hora_inicio || !hora_fin) {
       return res.status(400).json({ success: false, message: 'fecha, hora_inicio y hora_fin son obligatorios' });
@@ -97,13 +131,19 @@ const crearBloqueo = async (req, res) => {
     const bloqueo = await prisma.asignacionAgenda.create({
       data: {
         id_reserva: null,
+        id_ciudad,
+        id_estacionamiento,
         fecha: dia,
         hora_inicio,
         hora_fin,
         estado: 'pendiente',
         nota: nota?.trim() || 'Bloqueo manual'
       },
-      include: { lavador: { select: { id: true, nombre: true } } }
+      include: {
+        lavador: { select: { id: true, nombre: true } },
+        ciudad: { select: { id: true, nombre: true } },
+        estacionamiento: { select: { id: true, nombre: true } }
+      }
     });
 
     res.status(201).json({ success: true, data: bloqueo });
@@ -123,6 +163,8 @@ const eliminarBloqueo = async (req, res) => {
     if (bloqueo.id_reserva !== null) {
       return res.status(400).json({ success: false, message: 'No es un bloqueo manual' });
     }
+    // Un bloqueo nacional (sin ciudad) solo lo libera quien tiene alcance nacional
+    if (!alcance.puedeVer(req.usuario, bloqueo.id_ciudad)) return alcance.fueraDeAlcance(res);
 
     await prisma.asignacionAgenda.update({
       where: { id: bloqueo.id },

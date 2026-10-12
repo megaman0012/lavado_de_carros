@@ -7,19 +7,20 @@
 const express = require('express');
 const catalogo = require('../controllers/catalogo.controller');
 const { authenticate, requireRole } = require('../middleware/auth.middleware');
+const { requireNacional } = require('../utils/alcance');
 
 const soloInterno = [authenticate, requireRole('admin', 'operador')];
 
 const tiposVehiculo = express.Router();
 tiposVehiculo.use(...soloInterno);
 tiposVehiculo.get('/', catalogo.listarTiposVehiculo);
-tiposVehiculo.post('/', catalogo.crearTipoVehiculo);
-tiposVehiculo.put('/:id', catalogo.actualizarTipoVehiculo);
+tiposVehiculo.post('/', requireNacional, catalogo.crearTipoVehiculo);
+tiposVehiculo.put('/:id', requireNacional, catalogo.actualizarTipoVehiculo);
 
 const adicionales = express.Router();
 adicionales.use(...soloInterno);
 adicionales.get('/', catalogo.listarAdicionales);
-adicionales.post('/', catalogo.crearAdicional);
-adicionales.put('/:id', catalogo.actualizarAdicional);
+adicionales.post('/', requireNacional, catalogo.crearAdicional);
+adicionales.put('/:id', requireNacional, catalogo.actualizarAdicional);
 
 module.exports = { tiposVehiculo, adicionales };

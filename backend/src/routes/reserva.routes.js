@@ -7,6 +7,7 @@ const router = express.Router();
 const reservaController = require('../controllers/reserva.controller');
 const pagoController = require('../controllers/pago.controller');
 const { authenticate, requireRole } = require('../middleware/auth.middleware');
+const { reservaEnAlcance } = require('../middleware/alcance.middleware');
 const { upload, uploadComprobante } = require('../config/upload');
 const { limitadorSubidas, limitadorComprobantes } = require('../middleware/rateLimit.middleware');
 
@@ -16,8 +17,8 @@ router.get('/mis-reservas', authenticate, reservaController.misReservas);
 router.get('/mis-trabajos', authenticate, requireRole('lavador'), reservaController.misTrabajos);
 router.post('/', authenticate, reservaController.crear);
 router.post('/cotizar', authenticate, reservaController.cotizar);
-router.get('/:id', authenticate, reservaController.obtenerPorId);
-router.put('/:id/cancelar', authenticate, (req, res, next) => {
+router.get('/:id', authenticate, reservaEnAlcance, reservaController.obtenerPorId);
+router.put('/:id/cancelar', authenticate, reservaEnAlcance, (req, res, next) => {
   // El cliente puede cancelar la suya; interno también
   req.accion = 'cancelar';
   req.nuevoEstado = 'cancelada';
@@ -26,17 +27,17 @@ router.put('/:id/cancelar', authenticate, (req, res, next) => {
 
 // Interno: listado y workflow
 router.get('/', authenticate, requireRole('admin', 'operador'), reservaController.listar);
-router.put('/:id/asignar-lavador', authenticate, requireRole('admin', 'operador'), reservaController.asignarLavador);
-router.put('/:id/confirmar', authenticate, requireRole('admin', 'operador'), (req, res, next) => {
+router.put('/:id/asignar-lavador', authenticate, reservaEnAlcance, requireRole('admin', 'operador'), reservaController.asignarLavador);
+router.put('/:id/confirmar', authenticate, reservaEnAlcance, requireRole('admin', 'operador'), (req, res, next) => {
   req.accion = 'confirmar'; req.nuevoEstado = 'confirmada'; next();
 }, reservaController.cambiarEstado);
-router.put('/:id/iniciar', authenticate, requireRole('admin', 'operador', 'lavador'), (req, res, next) => {
+router.put('/:id/iniciar', authenticate, reservaEnAlcance, requireRole('admin', 'operador', 'lavador'), (req, res, next) => {
   req.accion = 'iniciar'; req.nuevoEstado = 'en_proceso'; next();
 }, reservaController.cambiarEstado);
-router.put('/:id/completar', authenticate, requireRole('admin', 'operador', 'lavador'), (req, res, next) => {
+router.put('/:id/completar', authenticate, reservaEnAlcance, requireRole('admin', 'operador', 'lavador'), (req, res, next) => {
   req.accion = 'completar'; req.nuevoEstado = 'completada'; next();
 }, reservaController.cambiarEstado);
-router.put('/:id/no-asistio', authenticate, requireRole('admin', 'operador'), (req, res, next) => {
+router.put('/:id/no-asistio', authenticate, reservaEnAlcance, requireRole('admin', 'operador'), (req, res, next) => {
   req.accion = 'no_asistio'; req.nuevoEstado = 'no_asistio'; next();
 }, reservaController.cambiarEstado);
 
@@ -48,7 +49,7 @@ const subirConUpload = (req, res, next) => {
     next();
   });
 };
-router.post('/:id/evidencia', authenticate, requireRole('admin', 'operador', 'lavador'),
+router.post('/:id/evidencia', authenticate, reservaEnAlcance, requireRole('admin', 'operador', 'lavador'),
   limitadorSubidas, subirConUpload, reservaController.subirEvidencia);
 
 // Pagos manuales (efectivo/transferencia) sobre la reserva
@@ -58,17 +59,17 @@ const subirComprobante = (req, res, next) => {
     next();
   });
 };
-router.post('/:id/pagos', authenticate, requireRole('admin', 'operador'), limitadorSubidas, subirComprobante, pagoController.registrar);
-router.delete('/:id/pagos/:pagoId', authenticate, requireRole('admin'), pagoController.anular);
+router.post('/:id/pagos', authenticate, reservaEnAlcance, requireRole('admin', 'operador'), limitadorSubidas, subirComprobante, pagoController.registrar);
+router.delete('/:id/pagos/:pagoId', authenticate, reservaEnAlcance, requireRole('admin'), pagoController.anular);
 // El cliente sube su propio comprobante de transferencia: queda "en_verificacion"
 // hasta que un operador lo apruebe (nunca puede aprobarlo él mismo).
-router.post('/:id/pagos/comprobante', authenticate, requireRole('cliente'),
+router.post('/:id/pagos/comprobante', authenticate, reservaEnAlcance, requireRole('cliente'),
   limitadorComprobantes, subirComprobante, pagoController.subirComprobanteCliente);
-router.put('/:id/pagos/:pagoId/verificar', authenticate, requireRole('admin', 'operador'), pagoController.verificar);
+router.put('/:id/pagos/:pagoId/verificar', authenticate, reservaEnAlcance, requireRole('admin', 'operador'), pagoController.verificar);
 // Pago con tarjeta (gateway-agnóstico, ver pago.controller.js) — cliente propietario o interno
-router.post('/:id/pagos/tarjeta', authenticate, requireRole('admin', 'operador', 'cliente'), pagoController.iniciarTarjeta);
+router.post('/:id/pagos/tarjeta', authenticate, reservaEnAlcance, requireRole('admin', 'operador', 'cliente'), pagoController.iniciarTarjeta);
 
 // Calificación del cliente (una vez, sobre reserva completada)
-router.post('/:id/calificacion', authenticate, requireRole('cliente'), reservaController.calificar);
+router.post('/:id/calificacion', authenticate, reservaEnAlcance, requireRole('cliente'), reservaController.calificar);
 
 module.exports = router;

@@ -5,16 +5,56 @@
 const prisma = require('../db');
 const sesionService = require('../services/sesion.service');
 const { generarPasswordTemporal, hashear } = require('../utils/credenciales');
+const alcance = require('../utils/alcance');
+
+// El lavador existe y es de la ciudad de quien lo pide; si no, responde y devuelve null
+const lavadorEnAlcance = async (req, res, id) => {
+  const lavador = await prisma.lavador.findUnique({ where: { id }, include: { usuario: true } });
+  if (!lavador) {
+    res.status(404).json({ success: false, message: 'Lavador no encontrado' });
+    return null;
+  }
+  if (!alcance.puedeVer(req.usuario, lavador.id_ciudad)) {
+    alcance.fueraDeAlcance(res);
+    return null;
+  }
+  return lavador;
+};
+
+// Ciudad para un lavador nuevo o trasladado. Un operador de ciudad solo da de
+// alta en la suya (si no la manda, se usa esa).
+const ciudadValida = async (req, res, valor) => {
+  const id = alcance.aEntero(valor) || alcance.ciudadFija(req.usuario);
+  if (!id) {
+    res.status(400).json({ success: false, message: 'La ciudad es obligatoria' });
+    return null;
+  }
+  if (!alcance.puedeVer(req.usuario, id)) {
+    alcance.fueraDeAlcance(res);
+    return null;
+  }
+  const ciudad = await prisma.ciudad.findUnique({ where: { id } });
+  if (!ciudad || !ciudad.activa) {
+    res.status(400).json({ success: false, message: 'Ciudad inexistente o inactiva' });
+    return null;
+  }
+  return id;
+};
 
 const listar = async (req, res) => {
   try {
     const { estado } = req.query;
     const where = {};
     if (estado) where.estado = estado;
+    const ciudad = alcance.ciudadFiltro(req);
+    if (ciudad) where.id_ciudad = ciudad;
 
     const lavadores = await prisma.lavador.findMany({
       where,
-      include: { usuario: { select: { id: true, username: true, estado: true } } },
+      include: {
+        usuario: { select: { id: true, username: true, estado: true } },
+        ciudad: { select: { id: true, nombre: true } }
+      },
       orderBy: { nombre: 'asc' }
     });
     res.json({ success: true, data: lavadores });
@@ -30,9 +70,12 @@ const crear = async (req, res) => {
     if (!nombre || nombre.trim() === '') {
       return res.status(400).json({ success: false, message: 'El nombre es obligatorio' });
     }
+    const id_ciudad = await ciudadValida(req, res, req.body.id_ciudad);
+    if (!id_ciudad) return;
     const lavador = await prisma.lavador.create({
       data: {
         nombre: nombre.trim(),
+        id_ciudad,
         cedula: cedula?.trim() || null,
         telefono: telefono?.trim() || null
       }
@@ -44,9 +87,10 @@ const crear = async (req, res) => {
   }
 };
 
-// Ojo: suspender un lavador reduce la capacidad expresa del día, porque
-// agenda.service.obtenerCapacidad() cuenta lavadores activos. Además le cierra
-// el acceso al sistema (antes la ficha quedaba inactiva pero seguía entrando).
+// Ojo: suspender un lavador (o pasarlo a otra ciudad) reduce la capacidad
+// expresa de su ciudad, porque agenda.service.obtenerCapacidad() cuenta los
+// lavadores activos de la ciudad del sitio. Además le cierra el acceso al
+// sistema (antes la ficha quedaba inactiva pero seguía entrando).
 const actualizar = async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -56,8 +100,13 @@ const actualizar = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Estado inválido (activo | inactivo)' });
     }
 
-    const actual = await prisma.lavador.findUnique({ where: { id }, include: { usuario: true } });
-    if (!actual) return res.status(404).json({ success: false, message: 'Lavador no encontrado' });
+    const actual = await lavadorEnAlcance(req, res, id);
+    if (!actual) return;
+    let id_ciudad;
+    if (req.body.id_ciudad !== undefined && alcance.aEntero(req.body.id_ciudad) !== actual.id_ciudad) {
+      id_ciudad = await ciudadValida(req, res, req.body.id_ciudad);
+      if (!id_ciudad) return;
+    }
 
     const lavador = await prisma.$transaction(async (tx) => {
       const actualizado = await tx.lavador.update({
@@ -66,6 +115,7 @@ const actualizar = async (req, res) => {
           ...(nombre && { nombre: nombre.trim() }),
           ...(cedula !== undefined && { cedula: cedula?.trim() || null }),
           ...(telefono !== undefined && { telefono: telefono?.trim() || null }),
+          ...(id_ciudad && { id_ciudad }),
           ...(estado && { estado })
         }
       });
@@ -87,8 +137,8 @@ const actualizar = async (req, res) => {
 const eliminar = async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const lavador = await prisma.lavador.findUnique({ where: { id }, include: { usuario: true } });
-    if (!lavador) return res.status(404).json({ success: false, message: 'Lavador no encontrado' });
+    const lavador = await lavadorEnAlcance(req, res, id);
+    if (!lavador) return;
 
     await prisma.$transaction(async (tx) => {
       await tx.lavador.update({ where: { id }, data: { estado: 'inactivo' } });
@@ -209,8 +259,23 @@ const resetPassword = async (req, res) => {
 const asignarLavador = async (req, res) => {
   try {
     const { id_lavador } = req.body;
-    const asignacion = await prisma.asignacionAgenda.update({
+    const actual = await prisma.asignacionAgenda.findUnique({
       where: { id: parseInt(req.params.asignacionId) },
+      include: { reserva: { select: { estacionamiento: { select: { id_ciudad: true } } } } }
+    });
+    if (!actual) return res.status(404).json({ success: false, message: 'Franja no encontrada' });
+    // La ciudad de la franja: la del sitio de la reserva o la del bloqueo
+    const ciudadFranja = actual.reserva?.estacionamiento?.id_ciudad ?? actual.id_ciudad;
+    if (!alcance.puedeVer(req.usuario, ciudadFranja)) return alcance.fueraDeAlcance(res);
+    if (id_lavador) {
+      const lavador = await prisma.lavador.findUnique({ where: { id: parseInt(id_lavador) } });
+      if (!lavador) return res.status(400).json({ success: false, message: 'Lavador inexistente' });
+      if (ciudadFranja && lavador.id_ciudad !== ciudadFranja) {
+        return res.status(400).json({ success: false, message: `${lavador.nombre} trabaja en otra ciudad` });
+      }
+    }
+    const asignacion = await prisma.asignacionAgenda.update({
+      where: { id: actual.id },
       data: { id_lavador: id_lavador ? parseInt(id_lavador) : null },
       include: { lavador: { select: { id: true, nombre: true } }, reserva: { select: { codigo: true } } }
     });

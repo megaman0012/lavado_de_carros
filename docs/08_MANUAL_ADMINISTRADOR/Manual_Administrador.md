@@ -1,6 +1,11 @@
 # Manual de administrador — Total Clean Car
 
-Versión 2.1 · 2026-10-08 · Reemplaza a la 2.0 (2026-09-27) y a la 1.0 (2026-09-15, "LavadoCarros")
+Versión 2.2 · 2026-10-12 · Reemplaza a la 2.1 (2026-10-08), la 2.0 (2026-09-27) y la 1.0 (2026-09-15, "LavadoCarros")
+
+**Novedades de la 2.2:** operación nacional **por ciudades** (sección 1.2):
+operador por ciudad, pantallas **Ciudades** y **Usuarios**, sitios de tipo
+taller, capacidad y bloqueos por ciudad (sección 6) y reportes por ciudad
+(sección 9).
 
 **Novedades de la 2.1:** vehículos de cada cliente visibles desde Clientes
 (sección 2.1), Dashboard y Reportes ahora distintos y con filtro por mes
@@ -19,7 +24,7 @@ Cuatro roles: `admin`, `operador`, `lavador`, `cliente`. Distribución al 2026-0
 | Rol | Alcance | Inicio al entrar |
 |---|---|---|
 | `admin` | administración completa | `/dashboard` (en el celular o la APK, `/agenda`) |
-| `operador` | agenda, reservas, asignaciones, validación de pagos, catálogo | `/dashboard` (en el celular o la APK, `/agenda`) |
+| `operador` | agenda, reservas, asignaciones, validación de pagos; **solo de su ciudad** si tiene una (sección 1.2) | `/dashboard` (en el celular o la APK, `/agenda`) |
 | `lavador` | sus trabajos y carga de evidencia | `/mis-trabajos` |
 | `cliente` | sus reservas, vehículos, pagos y calificaciones | `/mis-reservas` |
 
@@ -49,6 +54,33 @@ El sistema genera una contraseña temporal que se muestra **una sola vez**.
 > `lavador2` siguen con las contraseñas iniciales de `backend/prisma/seed.js`,
 > que está publicado en GitHub. Cambiarlas antes de dar acceso a más personas o
 > de publicar la app con dominio. Los clientes `*@demo.com` son de demostración.
+
+### 1.2 Ciudades y operadores (desde el 2026-10-12)
+
+La operación es nacional y se organiza por ciudad. Cada **sitio**, **lavador** y
+**operador** pertenece a una ciudad (tabla `Ciudad`).
+
+| Quién | Ve y gestiona |
+|---|---|
+| `admin` | todo el país; además es el único que entra a **Ciudades** y **Usuarios** |
+| `operador` **sin** ciudad (nacional) | todo el país, con un filtro de ciudad en cada pantalla |
+| `operador` **con** ciudad | solo su ciudad: reservas, agenda, sitios, lavadores, pagos, planes, reportes y actas. Lo fuerza el servidor: cambiar la URL no sirve |
+| `lavador` | sus trabajos; la agenda, de su ciudad |
+
+- **Abrir una ciudad nueva**, en este orden: **Ciudades** → agregarla;
+  **Estacionamientos** → sus sitios y su taller; **Lavadores** → sus lavadores;
+  **Usuarios** → su operador. Los clientes la ven al reservar cuando tiene al
+  menos un sitio activo.
+- **Usuarios** (`/api/usuarios`, solo admin): crear un operador (con ciudad o
+  nacional), cambiarle la ciudad (rige en su siguiente clic), suspenderlo (lo
+  saca de inmediato) o restablecer su contraseña (provisional, se muestra una vez).
+- **Catálogos nacionales:** servicios, precios, adicionales, tipos de vehículo y
+  ciudades valen para todo el país. Solo los modifica el admin o un operador
+  nacional; el operador de ciudad los puede consultar.
+- Una ciudad **no se borra**, se desactiva: deja de ofrecerse a los clientes y
+  en los formularios, sin tocar lo ya registrado.
+- Al migrar (2026-10-12) los 3 lavadores quedaron en Quito y el operador
+  existente quedó nacional.
 
 ## 2. Catálogos
 
@@ -138,8 +170,16 @@ otro recibe `409`.
 
 | Modalidad | Capacidad por franja |
 |---|---|
-| Expreso | `Estacionamiento.capacidad_expreso` del sitio; si es 0, la cantidad de lavadores activos |
-| Profunda | bahías (`Plaza.tipo = 'bahia_lavado'`) disponibles |
+| Expreso | `Estacionamiento.capacidad_expreso` del sitio; si es 0, los lavadores activos **de la ciudad del sitio** |
+| Profunda | bahías (`Plaza.tipo = 'bahia_lavado'`) disponibles **del taller elegido** |
+
+- **Tipos de sitio** (`Estacionamiento.tipo`): `aliado` (edificio, condominio,
+  oficina: ahí se hace el expreso) y `taller` (bahías de la limpieza profunda;
+  no admite expreso ni planes). Toda reserva tiene sitio: la de profunda, su
+  taller. Hasta el 2026-10-12 la profunda no guardaba sitio y contaba las bahías
+  de todo el país, y el expreso sumaba lavadores de otras ciudades.
+- **Trasladar un lavador** de ciudad (Lavadores → editar) mueve su capacidad:
+  deja de sumar en la ciudad anterior y suma en la nueva.
 
 - **Horarios ofrecidos:** empiezan en la apertura del sitio y avanzan cada
   `duracion_franja_min` (60 por defecto) para servicios que duran eso o más; los
@@ -149,9 +189,12 @@ otro recibe `409`.
   Hasta el 2026-09-27, crear contaba la capacidad global y un sitio con capacidad
   propia podía aceptar reservas encimadas.
 - **Bloqueos manuales:** `POST /api/agenda/bloqueos` y `DELETE /api/agenda/bloqueos/:id`.
-  Bloquean ambas modalidades en todos los sitios.
+  Bloquean ambas modalidades, con alcance: **un sitio** (`id_estacionamiento`),
+  **una ciudad** (`id_ciudad`) o **todo el país** (ninguno de los dos; solo el
+  admin o un operador nacional, y el panel pide confirmación). Un operador de
+  ciudad que no indica nada bloquea su ciudad.
 - **Asignar lavador:** `PUT /api/reservas/:id/asignar-lavador`. Rechaza con `409` si
-  el lavador ya tiene otro trabajo solapado ese día.
+  el lavador ya tiene otro trabajo solapado ese día, y con `400` si es de otra ciudad.
 - **Estados:** `solicitada → confirmada → en_proceso → completada`, con salidas a
   `cancelada` (desde solicitada o confirmada) y `no_asistio` (desde confirmada o en
   proceso). `PUT /api/reservas/:id/no-asistio` existe, pero **el panel no tiene
@@ -223,6 +266,14 @@ cobra en octubre. Cuando los dos números difieren, la pantalla lo explica sola.
 El **ticket promedio** es facturado ÷ lavados. Si no hubo lavados muestra "—", no
 "$0.00": cero haría pensar que se trabajó gratis.
 
+**Por ciudad.** Dashboard y Reportes tienen arriba el filtro de ciudad ("Todo
+el país" o una ciudad); la elección se recuerda en el navegador. Con "Todo el
+país", Reportes muestra la tabla **Por ciudad** (lavados, facturado, cobrado,
+ticket, cancelados y calificación de cada una; un clic en una ciudad filtra por
+ella). Las filas suman exactamente el total del país. El operador de ciudad ve
+siempre la suya, y las exportaciones dicen de qué ámbito son (Excel: hoja
+"Por ciudad" y columna Ciudad en el detalle).
+
 Las gráficas de barras acortan los nombres largos con puntos suspensivos; el
 nombre completo y el número exacto están en la tabla debajo de cada una. La
 gráfica de ingresos tiene un "Ver el detalle por día" plegado, con la misma
@@ -236,13 +287,15 @@ información en texto.
 | Resumen del período (Reportes) | `GET /api/reportes/resumen` | **sí** |
 | Ingresos por día | `GET /api/reportes/ingresos` | **sí** |
 | Por estacionamiento | `GET /api/reportes/por-estacionamiento` | **sí** |
+| Por ciudad | `GET /api/reportes/por-ciudad` | **sí** |
 | Por servicio | `GET /api/reportes/por-servicio` | **sí** |
 | Exportar Excel | `GET /api/reportes/exportar/excel` | **sí** |
 | Exportar PDF | `GET /api/reportes/exportar/pdf` | **sí** |
 | Acta de servicio | `GET /api/reportes/reserva/:id/acta.pdf` | — |
 
 Las fechas van como `YYYY-MM-DD` e **incluyen los dos extremos**. Sin ellas, los
-agregados devuelven el histórico completo.
+agregados devuelven el histórico completo. Todos aceptan además `id_ciudad`
+(para un operador de ciudad se ignora: siempre recibe la suya).
 
 El acta incluye el tipo de vehículo y los adicionales con su precio. Los PDF llevan
 el logo desde `backend/assets/logo-mark.png`.

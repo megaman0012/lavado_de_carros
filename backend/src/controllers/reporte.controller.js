@@ -11,6 +11,7 @@ const fs = require('fs');
 const prisma = require('../db');
 const { UPLOAD_ROOT } = require('../config/upload');
 const fechas = require('../utils/fechas');
+const alcance = require('../utils/alcance');
 
 // Día de negocio (medianoche UTC, ver utils/fechas.js). Un texto inválido se ignora.
 const inicioDia = (f) => fechas.fechaDia(f) || fechas.hoy();
@@ -22,9 +23,15 @@ const rangoQuery = (req) => ({
   hasta: req.query.hasta ? inicioDia(req.query.hasta) : new Date('2999-12-31')
 });
 
+// Ciudad del reporte: la del operador de ciudad, o la elegida en el filtro
+// (?id_ciudad=) por quien tiene alcance nacional; null = todo el país.
+// Las reservas son de una ciudad por su sitio (ver utils/alcance.js).
+const deCiudad = (ciudad) => (ciudad ? { estacionamiento: { is: { id_ciudad: ciudad } } } : {});
+const reservaDeCiudad = (ciudad) => (ciudad ? { reserva: { is: deCiudad(ciudad) } } : {});
+
 // ==================== CÁLCULOS (compartidos entre JSON y exportación) ====================
 
-const calcularKPIs = async () => {
+const calcularKPIs = async (ciudad = null) => {
   // "Hoy" en la zona del negocio: el contenedor corre en UTC y desde las 19:00
   // de Ecuador ya estaría contando el día siguiente
   const hoy = fechas.hoy();
@@ -33,21 +40,31 @@ const calcularKPIs = async () => {
   const inicioMes = fechas.inicioMes(hoy);
 
   const [hoyCount, semanaCount, mesCount, ingresosMes, pendientesHoy, porEstado, calificaciones] = await Promise.all([
-    prisma.reserva.count({ where: { fecha: { gte: hoy, lt: manana }, estado: { notIn: ['cancelada'] } } }),
-    prisma.reserva.count({ where: { fecha: { gte: inicioSemana }, estado: { notIn: ['cancelada'] } } }),
-    prisma.reserva.count({ where: { fecha: { gte: inicioMes }, estado: { notIn: ['cancelada'] } } }),
+    prisma.reserva.count({ where: { fecha: { gte: hoy, lt: manana }, estado: { notIn: ['cancelada'] }, ...deCiudad(ciudad) } }),
+    prisma.reserva.count({ where: { fecha: { gte: inicioSemana }, estado: { notIn: ['cancelada'] }, ...deCiudad(ciudad) } }),
+    prisma.reserva.count({ where: { fecha: { gte: inicioMes }, estado: { notIn: ['cancelada'] }, ...deCiudad(ciudad) } }),
     prisma.pago.aggregate({
-      where: { estado: 'aprobado', fecha_pago: { gte: inicioMes } },
+      where: { estado: 'aprobado', fecha_pago: { gte: inicioMes }, ...reservaDeCiudad(ciudad) },
       _sum: { monto: true }
     }),
-    prisma.reserva.count({ where: { fecha: { gte: hoy }, estado: 'solicitada' } }),
-    prisma.reserva.groupBy({ by: ['estado'], _count: true }),
-    prisma.calificacion.aggregate({ _avg: { puntuacion: true }, _count: true })
+    prisma.reserva.count({ where: { fecha: { gte: hoy }, estado: 'solicitada', ...deCiudad(ciudad) } }),
+    prisma.reserva.groupBy({ by: ['estado'], where: deCiudad(ciudad), _count: true }),
+    prisma.calificacion.aggregate({ where: reservaDeCiudad(ciudad), _avg: { puntuacion: true }, _count: true })
   ]);
 
   // Ocupación de hoy: franjas ocupadas vs capacidad total en horas operativas (07-18)
   const asignacionesHoy = await prisma.asignacionAgenda.findMany({
-    where: { fecha: hoy, estado: { not: 'cancelado' } }
+    where: {
+      fecha: hoy,
+      estado: { not: 'cancelado' },
+      ...(ciudad && {
+        OR: [
+          reservaDeCiudad(ciudad),
+          { id_reserva: null, id_ciudad: ciudad },
+          { id_reserva: null, id_ciudad: null, id_estacionamiento: null }
+        ]
+      })
+    }
   });
   const minutosOcupados = asignacionesHoy.reduce((acc, a) => {
     const [h1, m1] = a.hora_inicio.split(':').map(Number);
@@ -82,8 +99,8 @@ const calcularKPIs = async () => {
  * Un lavado de fin de mes cobrado al mes siguiente cae en meses distintos, y
  * esa diferencia es justamente lo que hay que poder ver.
  */
-const calcularResumenPeriodo = async (desde, hasta) => {
-  const enRango = { fecha: { gte: desde, lte: hasta } };
+const calcularResumenPeriodo = async (desde, hasta, ciudad = null) => {
+  const enRango = { fecha: { gte: desde, lte: hasta }, ...deCiudad(ciudad) };
 
   const [hechas, canceladas, noAsistio, cobrado, calificaciones] = await Promise.all([
     prisma.reserva.aggregate({
@@ -94,7 +111,7 @@ const calcularResumenPeriodo = async (desde, hasta) => {
     prisma.reserva.count({ where: { ...enRango, estado: 'cancelada' } }),
     prisma.reserva.count({ where: { ...enRango, estado: 'no_asistio' } }),
     prisma.pago.aggregate({
-      where: { estado: 'aprobado', fecha_pago: { gte: desde, lte: hasta } },
+      where: { estado: 'aprobado', fecha_pago: { gte: desde, lte: hasta }, ...reservaDeCiudad(ciudad) },
       _sum: { monto: true }
     }),
     prisma.calificacion.aggregate({
@@ -125,10 +142,10 @@ const calcularResumenPeriodo = async (desde, hasta) => {
   };
 };
 
-const calcularPorServicio = async (desde, hasta) => {
+const calcularPorServicio = async (desde, hasta, ciudad = null) => {
   const datos = await prisma.reserva.groupBy({
     by: ['id_tipo_servicio'],
-    where: { fecha: { gte: desde, lte: hasta }, estado: { notIn: ['cancelada'] } },
+    where: { fecha: { gte: desde, lte: hasta }, estado: { notIn: ['cancelada'] }, ...deCiudad(ciudad) },
     _count: true,
     _sum: { precio_final: true }
   });
@@ -144,27 +161,80 @@ const calcularPorServicio = async (desde, hasta) => {
   }).sort((a, b) => b.cantidad - a.cantidad);
 };
 
-const calcularPorEstacionamiento = async (desde, hasta) => {
+const calcularPorEstacionamiento = async (desde, hasta, ciudad = null) => {
   const datos = await prisma.reserva.groupBy({
     by: ['id_estacionamiento'],
-    where: { fecha: { gte: desde, lte: hasta }, estado: { notIn: ['cancelada'] }, id_estacionamiento: { not: null } },
+    where: {
+      fecha: { gte: desde, lte: hasta },
+      estado: { notIn: ['cancelada'] },
+      id_estacionamiento: { not: null },
+      ...deCiudad(ciudad)
+    },
     _count: true,
     _sum: { precio_final: true }
   });
-  const sitios = await prisma.estacionamiento.findMany();
+  const sitios = await prisma.estacionamiento.findMany({ include: { ciudad: { select: { nombre: true } } } });
   return datos.map((d) => {
     const e = sitios.find((x) => x.id === d.id_estacionamiento);
     return {
       estacionamiento: e?.nombre || `Sitio ${d.id_estacionamiento}`,
+      ciudad: e?.ciudad?.nombre || '',
+      tipo: e?.tipo || '',
       cantidad: d._count,
       ingresos: d._sum.precio_final || 0
     };
   }).sort((a, b) => b.cantidad - a.cantidad);
 };
 
-const calcularIngresos = async (desde, hasta) => {
+/**
+ * Panel nacional: una fila por ciudad activa (también las que no tuvieron
+ * movimiento, que es un dato: una ciudad en cero se tiene que ver). Mismas
+ * definiciones que calcularResumenPeriodo, para que la suma de las filas cuadre
+ * con el resumen del país.
+ */
+const calcularPorCiudad = async (desde, hasta, ciudad = null) => {
+  const [ciudades, reservas, pagos] = await Promise.all([
+    prisma.ciudad.findMany({ where: ciudad ? { id: ciudad } : { activa: true }, orderBy: { nombre: 'asc' } }),
+    prisma.reserva.findMany({
+      where: { fecha: { gte: desde, lte: hasta }, id_estacionamiento: { not: null }, ...deCiudad(ciudad) },
+      select: {
+        estado: true, precio_final: true,
+        estacionamiento: { select: { id_ciudad: true } },
+        calificacion: { select: { puntuacion: true } }
+      }
+    }),
+    prisma.pago.findMany({
+      where: { estado: 'aprobado', fecha_pago: { gte: desde, lte: hasta }, ...reservaDeCiudad(ciudad) },
+      select: { monto: true, reserva: { select: { estacionamiento: { select: { id_ciudad: true } } } } }
+    })
+  ]);
+
+  return ciudades.map((c) => {
+    const suyas = reservas.filter((r) => r.estacionamiento?.id_ciudad === c.id);
+    const hechas = suyas.filter((r) => !['cancelada', 'no_asistio'].includes(r.estado));
+    const facturado = hechas.reduce((t, r) => t + (r.precio_final || 0), 0);
+    const notas = suyas.filter((r) => r.calificacion).map((r) => r.calificacion.puntuacion);
+    return {
+      id_ciudad: c.id,
+      ciudad: c.nombre,
+      lavados: hechas.length,
+      facturado,
+      cobrado: pagos
+        .filter((p) => p.reserva?.estacionamiento?.id_ciudad === c.id)
+        .reduce((t, p) => t + p.monto, 0),
+      ticket_promedio: hechas.length > 0 ? Math.round((facturado / hechas.length) * 100) / 100 : null,
+      canceladas: suyas.filter((r) => r.estado === 'cancelada').length,
+      no_asistio: suyas.filter((r) => r.estado === 'no_asistio').length,
+      calificacion_promedio: notas.length > 0
+        ? Math.round((notas.reduce((t, n) => t + n, 0) / notas.length) * 10) / 10
+        : null
+    };
+  });
+};
+
+const calcularIngresos = async (desde, hasta, ciudad = null) => {
   const reservas = await prisma.reserva.findMany({
-    where: { fecha: { gte: desde, lte: hasta }, estado: { notIn: ['cancelada'] } },
+    where: { fecha: { gte: desde, lte: hasta }, estado: { notIn: ['cancelada'] }, ...deCiudad(ciudad) },
     select: { fecha: true, precio_final: true }
   });
   const mapa = {};
@@ -181,7 +251,7 @@ const calcularIngresos = async (desde, hasta) => {
 
 const kpis = async (req, res) => {
   try {
-    res.json({ success: true, data: await calcularKPIs() });
+    res.json({ success: true, data: await calcularKPIs(alcance.ciudadFiltro(req)) });
   } catch (error) {
     console.error('Error calculando KPIs:', error);
     res.status(500).json({ success: false, message: 'Error al calcular KPIs' });
@@ -192,7 +262,7 @@ const kpis = async (req, res) => {
 const resumenPeriodo = async (req, res) => {
   try {
     const { desde, hasta } = rangoQuery(req);
-    res.json({ success: true, data: await calcularResumenPeriodo(desde, hasta) });
+    res.json({ success: true, data: await calcularResumenPeriodo(desde, hasta, alcance.ciudadFiltro(req)) });
   } catch (error) {
     console.error('Error calculando el resumen del período:', error);
     res.status(500).json({ success: false, message: 'Error al calcular el resumen' });
@@ -202,7 +272,7 @@ const resumenPeriodo = async (req, res) => {
 const porServicio = async (req, res) => {
   try {
     const { desde, hasta } = rangoQuery(req);
-    res.json({ success: true, data: await calcularPorServicio(desde, hasta) });
+    res.json({ success: true, data: await calcularPorServicio(desde, hasta, alcance.ciudadFiltro(req)) });
   } catch (error) {
     console.error('Error reporte por servicio:', error);
     res.status(500).json({ success: false, message: 'Error al generar reporte' });
@@ -212,9 +282,20 @@ const porServicio = async (req, res) => {
 const porEstacionamiento = async (req, res) => {
   try {
     const { desde, hasta } = rangoQuery(req);
-    res.json({ success: true, data: await calcularPorEstacionamiento(desde, hasta) });
+    res.json({ success: true, data: await calcularPorEstacionamiento(desde, hasta, alcance.ciudadFiltro(req)) });
   } catch (error) {
     console.error('Error reporte por estacionamiento:', error);
+    res.status(500).json({ success: false, message: 'Error al generar reporte' });
+  }
+};
+
+// GET /api/reportes/por-ciudad?desde=&hasta=
+const porCiudad = async (req, res) => {
+  try {
+    const { desde, hasta } = rangoQuery(req);
+    res.json({ success: true, data: await calcularPorCiudad(desde, hasta, alcance.ciudadFiltro(req)) });
+  } catch (error) {
+    console.error('Error reporte por ciudad:', error);
     res.status(500).json({ success: false, message: 'Error al generar reporte' });
   }
 };
@@ -223,7 +304,7 @@ const ingresos = async (req, res) => {
   try {
     const hasta = req.query.hasta ? inicioDia(req.query.hasta) : fechas.hoy();
     const desde = req.query.desde ? inicioDia(req.query.desde) : fechas.sumarDias(hasta, -30);
-    res.json({ success: true, data: await calcularIngresos(desde, hasta) });
+    res.json({ success: true, data: await calcularIngresos(desde, hasta, alcance.ciudadFiltro(req)) });
   } catch (error) {
     console.error('Error reporte ingresos:', error);
     res.status(500).json({ success: false, message: 'Error al generar reporte' });
@@ -232,14 +313,14 @@ const ingresos = async (req, res) => {
 
 // Detalle lavado por lavado: es lo que hace auditable el reporte (los agregados
 // dicen cuánto, no cuál). Alimenta la hoja "Detalle de lavados" del Excel.
-const calcularDetalle = async (desde, hasta) => {
+const calcularDetalle = async (desde, hasta, ciudad = null) => {
   const reservas = await prisma.reserva.findMany({
-    where: { fecha: { gte: desde, lte: hasta } },
+    where: { fecha: { gte: desde, lte: hasta }, ...deCiudad(ciudad) },
     include: {
       cliente: { select: { nombre: true, telefono: true } },
       vehiculo: { select: { placa: true, marca: true, modelo: true } },
       tipoServicio: { select: { nombre: true, modalidad: true } },
-      estacionamiento: { select: { nombre: true } },
+      estacionamiento: { select: { nombre: true, ciudad: { select: { nombre: true } } } },
       asignaciones: { include: { lavador: { select: { nombre: true } } } },
       registro: true,
       pagos: true,
@@ -264,6 +345,7 @@ const calcularDetalle = async (desde, hasta) => {
       vehiculo: [r.vehiculo?.placa, r.vehiculo?.marca, r.vehiculo?.modelo].filter(Boolean).join(' '),
       servicio: r.tipoServicio?.nombre || '',
       modalidad: r.tipoServicio?.modalidad || '',
+      ciudad: r.estacionamiento?.ciudad?.nombre || '',
       sitio: r.estacionamiento?.nombre || 'Bahía de lavado',
       lavador: r.asignaciones.map((a) => a.lavador?.nombre).filter(Boolean).join(', ') || 'Sin asignar',
       precio: r.precio_final ?? 0,
@@ -280,20 +362,28 @@ const calcularDetalle = async (desde, hasta) => {
 
 const datosExportacion = async (req) => {
   const { desde, hasta } = rangoQuery(req);
-  const [kpisData, porServicioData, porEstacionamientoData, ingresosData, detalleData] = await Promise.all([
-    calcularKPIs(),
-    calcularPorServicio(desde, hasta),
-    calcularPorEstacionamiento(desde, hasta),
-    calcularIngresos(desde, hasta),
-    calcularDetalle(desde, hasta)
-  ]);
-  return { desde, hasta, kpisData, porServicioData, porEstacionamientoData, ingresosData, detalleData };
+  const ciudad = alcance.ciudadFiltro(req);
+  const [kpisData, porServicioData, porEstacionamientoData, porCiudadData, ingresosData, detalleData, ciudadData] =
+    await Promise.all([
+      calcularKPIs(ciudad),
+      calcularPorServicio(desde, hasta, ciudad),
+      calcularPorEstacionamiento(desde, hasta, ciudad),
+      calcularPorCiudad(desde, hasta, ciudad),
+      calcularIngresos(desde, hasta, ciudad),
+      calcularDetalle(desde, hasta, ciudad),
+      ciudad ? prisma.ciudad.findUnique({ where: { id: ciudad } }) : null
+    ]);
+  // Título del alcance: el archivo tiene que decir de qué ciudad es, porque se
+  // reenvía y deja de estar al lado del filtro que lo generó
+  const ambito = ciudadData ? ciudadData.nombre : 'Todo el país';
+  return { desde, hasta, ambito, kpisData, porServicioData, porEstacionamientoData, porCiudadData, ingresosData, detalleData };
 };
 
 // GET /api/reportes/exportar/excel?desde=&hasta=
 const exportarExcel = async (req, res) => {
   try {
-    const { kpisData, porServicioData, porEstacionamientoData, ingresosData, detalleData } = await datosExportacion(req);
+    const { ambito, kpisData, porServicioData, porEstacionamientoData, porCiudadData, ingresosData, detalleData } =
+      await datosExportacion(req);
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Total Clean Car';
@@ -305,6 +395,7 @@ const exportarExcel = async (req, res) => {
     resumen.columns = [{ header: 'Indicador', key: 'k', width: 28 }, { header: 'Valor', key: 'v', width: 18 }];
     resumen.getRow(1).eachCell((c) => Object.assign(c, estiloHeader));
     resumen.addRows([
+      { k: 'Ámbito', v: ambito },
       { k: 'Lavados hoy', v: kpisData.lavados_hoy },
       { k: 'Lavados esta semana', v: kpisData.lavados_semana },
       { k: 'Lavados este mes', v: kpisData.lavados_mes },
@@ -324,9 +415,25 @@ const exportarExcel = async (req, res) => {
     hojaServicio.getRow(1).eachCell((c) => Object.assign(c, estiloHeader));
     hojaServicio.addRows(porServicioData);
 
+    const hojaCiudad = workbook.addWorksheet('Por ciudad');
+    hojaCiudad.columns = [
+      { header: 'Ciudad', key: 'ciudad', width: 20 },
+      { header: 'Lavados', key: 'lavados', width: 10 },
+      { header: 'Facturado ($)', key: 'facturado', width: 14 },
+      { header: 'Cobrado ($)', key: 'cobrado', width: 14 },
+      { header: 'Ticket promedio ($)', key: 'ticket_promedio', width: 18 },
+      { header: 'Canceladas', key: 'canceladas', width: 12 },
+      { header: 'No asistió', key: 'no_asistio', width: 12 },
+      { header: 'Calificación', key: 'calificacion_promedio', width: 12 }
+    ];
+    hojaCiudad.getRow(1).eachCell((c) => Object.assign(c, estiloHeader));
+    hojaCiudad.addRows(porCiudadData);
+
     const hojaSitio = workbook.addWorksheet('Por estacionamiento');
     hojaSitio.columns = [
       { header: 'Estacionamiento', key: 'estacionamiento', width: 28 },
+      { header: 'Ciudad', key: 'ciudad', width: 16 },
+      { header: 'Tipo', key: 'tipo', width: 10 },
       { header: 'Cantidad', key: 'cantidad', width: 12 },
       { header: 'Ingresos ($)', key: 'ingresos', width: 14 }
     ];
@@ -354,6 +461,7 @@ const exportarExcel = async (req, res) => {
       { header: 'Vehículo', key: 'vehiculo', width: 26 },
       { header: 'Servicio', key: 'servicio', width: 24 },
       { header: 'Modalidad', key: 'modalidad', width: 12 },
+      { header: 'Ciudad', key: 'ciudad', width: 14 },
       { header: 'Sitio', key: 'sitio', width: 24 },
       { header: 'Lavador', key: 'lavador', width: 20 },
       { header: 'Precio ($)', key: 'precio', width: 12 },
@@ -389,7 +497,7 @@ const encabezadoMarca = (doc) => {
 // GET /api/reportes/exportar/pdf?desde=&hasta=
 const exportarPDF = async (req, res) => {
   try {
-    const { kpisData, porServicioData, porEstacionamientoData } = await datosExportacion(req);
+    const { ambito, kpisData, porServicioData, porEstacionamientoData, porCiudadData } = await datosExportacion(req);
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="reporte-total-clean-car-${new Date().toISOString().slice(0, 10)}.pdf"`);
@@ -399,7 +507,7 @@ const exportarPDF = async (req, res) => {
 
     encabezadoMarca(doc);
     doc.fontSize(18).fillColor('#3459A5').text('Reporte - Total Clean Car', { align: 'left' });
-    doc.fontSize(10).fillColor('#64748b').text(`Generado el ${ahoraTexto()}`);
+    doc.fontSize(10).fillColor('#64748b').text(`${ambito} · Generado el ${ahoraTexto()}`);
     doc.moveDown(1.5);
 
     doc.fontSize(14).fillColor('#1e293b').text('Resumen');
@@ -426,13 +534,26 @@ const exportarPDF = async (req, res) => {
     }
     doc.moveDown(1.5);
 
+    // Comparativo entre ciudades: solo tiene sentido en el reporte nacional
+    if (porCiudadData.length > 1) {
+      doc.fontSize(14).fillColor('#1e293b').text('Por ciudad');
+      doc.moveDown(0.5);
+      doc.fontSize(10).fillColor('#334155');
+      porCiudadData.forEach((c) => doc.text(
+        `${c.ciudad} — ${c.lavados} lavados — facturado $${c.facturado.toFixed(2)} — cobrado $${c.cobrado.toFixed(2)}` +
+        (c.calificacion_promedio ? ` — calificación ${c.calificacion_promedio}` : '')
+      ));
+      doc.moveDown(1.5);
+    }
+
     doc.fontSize(14).fillColor('#1e293b').text('Por estacionamiento');
     doc.moveDown(0.5);
     doc.fontSize(10).fillColor('#334155');
     if (porEstacionamientoData.length === 0) {
       doc.text('Sin datos en el rango seleccionado.');
     } else {
-      porEstacionamientoData.forEach((s) => doc.text(`${s.estacionamiento} — ${s.cantidad} lavados — $${s.ingresos.toFixed(2)}`));
+      porEstacionamientoData.forEach((s) =>
+        doc.text(`${s.estacionamiento} (${s.ciudad}) — ${s.cantidad} lavados — $${s.ingresos.toFixed(2)}`));
     }
 
     doc.end();
@@ -688,6 +809,7 @@ const actaServicio = async (req, res) => {
 };
 
 module.exports = {
+  porCiudad,
   kpis,
   resumenPeriodo,
   porServicio,

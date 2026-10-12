@@ -5,6 +5,7 @@ import api from '../services/api';
 import { fechaCorta, ultimosDias } from '../utils/fechas';
 import { KPIs } from '../types';
 import { BarrasMagnitud, DetalleDatos, Panel, SerieTemporal, TablaDatos, TarjetaKPI, moneda } from '../components/graficos';
+import FiltroCiudad, { useFiltroCiudad } from '../components/FiltroCiudad';
 
 /**
  * Dashboard — "¿cómo vamos ahora?"
@@ -24,19 +25,22 @@ import { BarrasMagnitud, DetalleDatos, Panel, SerieTemporal, TablaDatos, Tarjeta
 const DIAS = 30;
 
 const Dashboard: React.FC = () => {
+  const filtro = useFiltroCiudad();
+  const idCiudad = filtro.idCiudad;
   const [kpis, setKpis] = useState<KPIs | null>(null);
   const [ingresos, setIngresos] = useState<{ fecha: string; total: number }[]>([]);
   const [porServicio, setPorServicio] = useState<{ servicio: string; cantidad: number }[]>([]);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
-    const rango = ultimosDias(DIAS);
+    const ciudad = idCiudad ? { id_ciudad: idCiudad } : {};
+    const rango = { ...ultimosDias(DIAS), ...ciudad };
     Promise.all([
-      api.get('/reportes/kpis').then((r) => setKpis(r.data)).catch(() => {}),
+      api.get('/reportes/kpis', { params: ciudad }).then((r) => setKpis(r.data)).catch(() => {}),
       api.get('/reportes/ingresos', { params: rango }).then((r) => setIngresos(r.data)).catch(() => {}),
       api.get('/reportes/por-servicio', { params: rango }).then((r) => setPorServicio(r.data)).catch(() => {})
     ]).finally(() => setCargando(false));
-  }, []);
+  }, [idCiudad]);
 
   const tarjetas = [
     { titulo: 'Lavados hoy', valor: kpis?.lavados_hoy ?? '—', icono: <Car className="text-sky-600" />, fondo: 'bg-sky-50' },
@@ -53,9 +57,12 @@ const Dashboard: React.FC = () => {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-        <LayoutDashboard className="text-sky-600" /> Dashboard
-      </h1>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+          <LayoutDashboard className="text-sky-600" /> Dashboard
+        </h1>
+        <FiltroCiudad filtro={filtro} />
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
         {tarjetas.map((t) => <TarjetaKPI key={t.titulo} {...t} />)}

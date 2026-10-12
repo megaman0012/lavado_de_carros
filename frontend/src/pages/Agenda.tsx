@@ -1,11 +1,24 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { CalendarDays, Lock, Unlock } from 'lucide-react';
 import api from '../services/api';
-import { AsignacionAgenda } from '../types';
+import { AsignacionAgenda, Estacionamiento } from '../types';
 import { hoyISO } from '../utils/fechas';
+import { useAuth } from '../context/AuthContext';
+import FiltroCiudad, { useFiltroCiudad } from '../components/FiltroCiudad';
 
+// Alcance de un bloqueo, en palabras: lo que el operador tiene que ver para no
+// cerrar por error todo el país cuando quería cerrar un edificio
+const alcanceBloqueo = (a: AsignacionAgenda) =>
+  a.estacionamiento ? a.estacionamiento.nombre : a.ciudad ? `toda ${a.ciudad.nombre}` : 'todo el país';
 
 const Agenda: React.FC = () => {
+  const { usuario } = useAuth();
+  const puedeBloquear = usuario?.rol === 'admin' || usuario?.rol === 'operador';
+  const filtro = useFiltroCiudad();
+  const idCiudad = filtro.idCiudad;
+  const [sitios, setSitios] = useState<Estacionamiento[]>([]);
+  // '' = toda la ciudad del filtro (o el país, si el filtro está en "Todo el país")
+  const [sitioBloqueo, setSitioBloqueo] = useState('');
   const [fecha, setFecha] = useState(hoyISO());
   const [asignaciones, setAsignaciones] = useState<AsignacionAgenda[]>([]);
   const [capacidades, setCapacidades] = useState<{ expreso: number; profunda: number }>({ expreso: 0, profunda: 0 });
@@ -14,24 +27,36 @@ const Agenda: React.FC = () => {
 
   const cargar = useCallback(() => {
     setCargando(true);
-    api.get('/agenda', { params: { fecha } })
+    api.get('/agenda', { params: { fecha, ...(idCiudad && { id_ciudad: idCiudad }) } })
       .then((r) => {
         setAsignaciones(r.data.asignaciones);
         setCapacidades(r.data.capacidades);
       })
       .catch(() => setAsignaciones([]))
       .finally(() => setCargando(false));
-  }, [fecha]);
+  }, [fecha, idCiudad]);
 
   useEffect(cargar, [cargar]);
+
+  useEffect(() => {
+    setSitioBloqueo('');
+    if (!puedeBloquear || !idCiudad) { setSitios([]); return; }
+    api.get('/estacionamientos', { params: { id_ciudad: idCiudad, estado: 'activo' } })
+      .then((r) => setSitios(r.data))
+      .catch(() => setSitios([]));
+  }, [idCiudad, puedeBloquear]);
 
   const crearBloqueo = async () => {
     if (!bloqueoHora.inicio || !bloqueoHora.fin) {
       alert('Indica hora de inicio y fin del bloqueo');
       return;
     }
+    if (!idCiudad && !window.confirm('Va a bloquear esa franja en TODO EL PAÍS (todas las ciudades y sitios). ¿Continuar?')) return;
     try {
-      await api.post('/agenda/bloqueos', { fecha, hora_inicio: bloqueoHora.inicio, hora_fin: bloqueoHora.fin, nota: bloqueoHora.nota });
+      await api.post('/agenda/bloqueos', {
+        fecha, hora_inicio: bloqueoHora.inicio, hora_fin: bloqueoHora.fin, nota: bloqueoHora.nota,
+        ...(sitioBloqueo ? { id_estacionamiento: Number(sitioBloqueo) } : idCiudad ? { id_ciudad: idCiudad } : {})
+      });
       setBloqueoHora({ inicio: '', fin: '', nota: '' });
       cargar();
     } catch (e: any) {
@@ -55,7 +80,8 @@ const Agenda: React.FC = () => {
         <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
           <CalendarDays className="text-sky-600" /> Agenda
         </h1>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {usuario?.rol !== 'lavador' && <FiltroCiudad filtro={filtro} />}
           <input
             type="date"
             value={fecha}
@@ -69,9 +95,15 @@ const Agenda: React.FC = () => {
       </div>
 
       {/* Bloqueo manual */}
+      {puedeBloquear && (
       <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
         <p className="text-sm font-medium text-slate-700 mb-3">Bloquear franja manualmente (mantenimiento, imprevistos)</p>
         <div className="flex flex-wrap gap-2">
+          <select value={sitioBloqueo} onChange={(e) => setSitioBloqueo(e.target.value)} aria-label="Dónde bloquear"
+            className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+            <option value="">{idCiudad ? 'Toda la ciudad' : 'Todo el país'}</option>
+            {sitios.map((s) => <option key={s.id} value={s.id}>Solo {s.nombre}</option>)}
+          </select>
           <input type="time" value={bloqueoHora.inicio} onChange={(e) => setBloqueoHora({ ...bloqueoHora, inicio: e.target.value })}
             className="px-3 py-2 border border-slate-300 rounded-lg" />
           <input type="time" value={bloqueoHora.fin} onChange={(e) => setBloqueoHora({ ...bloqueoHora, fin: e.target.value })}
@@ -83,6 +115,7 @@ const Agenda: React.FC = () => {
           </button>
         </div>
       </div>
+      )}
 
       {/* Listado del día */}
       {cargando ? (
@@ -103,9 +136,10 @@ const Agenda: React.FC = () => {
                     <p className="text-sm text-slate-500">
                       {a.reserva.tipoServicio?.nombre} · {a.reserva.vehiculo?.placa} · {a.reserva.cliente?.nombre}
                       {a.reserva.estacionamiento && ` · 📍 ${a.reserva.estacionamiento.nombre}`}
+                      {!idCiudad && a.reserva.estacionamiento?.ciudad && ` (${a.reserva.estacionamiento.ciudad.nombre})`}
                     </p>
                   ) : (
-                    <p className="text-sm text-red-500">{a.nota || 'Bloqueo manual'}</p>
+                    <p className="text-sm text-red-500">{a.nota || 'Bloqueo manual'} · {alcanceBloqueo(a)}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
@@ -113,7 +147,7 @@ const Agenda: React.FC = () => {
                   <span className={`text-xs px-2 py-1 rounded-full capitalize ${a.estado === 'cancelado' ? 'bg-slate-100 text-slate-500' : 'bg-green-100 text-green-700'}`}>
                     {a.estado.replace('_', ' ')}
                   </span>
-                  {a.id_reserva === null && a.estado !== 'cancelado' && (
+                  {puedeBloquear && a.id_reserva === null && a.estado !== 'cancelado' && (
                     <button onClick={() => liberarBloqueo(a.id)} title="Liberar bloqueo" className="text-slate-400 hover:text-green-600">
                       <Unlock size={18} />
                     </button>

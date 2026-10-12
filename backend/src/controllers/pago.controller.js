@@ -6,6 +6,7 @@
 
 const crypto = require('crypto');
 const prisma = require('../db');
+const alcance = require('../utils/alcance');
 const { firmar } = require('../utils/firmaArchivos');
 const { notificarPagoVerificado } = require('../services/notificacion.service');
 
@@ -350,8 +351,12 @@ const verificar = async (req, res) => {
  */
 const pendientes = async (req, res) => {
   try {
+    const ciudad = alcance.ciudadFiltro(req);
     const pagos = await prisma.pago.findMany({
-      where: { estado: 'en_verificacion' },
+      where: {
+        estado: 'en_verificacion',
+        ...(ciudad && { reserva: { is: { estacionamiento: { is: { id_ciudad: ciudad } } } } })
+      },
       include: {
         reserva: {
           include: {

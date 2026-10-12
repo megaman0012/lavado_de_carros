@@ -64,13 +64,39 @@ const adicionales = async (req, res) => {
   }
 };
 
-// GET /api/public/estacionamientos — sitios que admiten servicio expreso
+// GET /api/public/ciudades — ciudades donde hoy se puede reservar algo (con al
+// menos un sitio activo). Es lo primero que elige el cliente en la app.
+const ciudades = async (req, res) => {
+  try {
+    const lista = await prisma.ciudad.findMany({
+      where: { activa: true, estacionamientos: { some: { estado: 'activo' } } },
+      select: { id: true, nombre: true, provincia: true },
+      orderBy: { nombre: 'asc' }
+    });
+    res.json({ success: true, data: lista });
+  } catch (error) {
+    console.error('Error listando ciudades públicas:', error);
+    res.status(500).json({ success: false, message: 'Error al obtener ciudades' });
+  }
+};
+
+// GET /api/public/estacionamientos?id_ciudad=&tipo=
+//   tipo=aliado (por defecto): sitios donde se hace el expreso
+//   tipo=taller: talleres de limpieza profunda
 const estacionamientos = async (req, res) => {
   try {
+    const idCiudad = parseInt(req.query.id_ciudad) || null;
+    const taller = req.query.tipo === 'taller';
     const lista = await prisma.estacionamiento.findMany({
-      where: { estado: 'activo', admite_expreso: true },
+      where: {
+        estado: 'activo',
+        ciudad: { activa: true },
+        ...(taller ? { tipo: 'taller' } : { tipo: 'aliado', admite_expreso: true }),
+        ...(idCiudad && { id_ciudad: idCiudad })
+      },
       select: {
-        id: true, nombre: true, direccion: true, ciudad: true,
+        id: true, nombre: true, direccion: true, tipo: true, id_ciudad: true,
+        ciudad: { select: { id: true, nombre: true } },
         horario_apertura: true, horario_cierre: true
       },
       orderBy: { nombre: 'asc' }
@@ -82,4 +108,4 @@ const estacionamientos = async (req, res) => {
   }
 };
 
-module.exports = { servicios, tiposVehiculo, adicionales, estacionamientos };
+module.exports = { servicios, tiposVehiculo, adicionales, ciudades, estacionamientos };

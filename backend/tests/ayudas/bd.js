@@ -75,9 +75,13 @@ const CLAVE = 'prueba1234';
  * Datos mínimos para ejercitar el negocio completo:
  *   - tipos liviano y moto; la moto NO tiene precio para el servicio expreso,
  *     que es justamente el caso "este servicio no se ofrece a este tipo";
- *   - un sitio con capacidad 1 (ahí se prueba el doble-reserva) y otro con 2;
- *   - una sola bahía de lavado, que es la capacidad de la modalidad profunda;
- *   - un usuario por rol, todos con la misma contraseña.
+ *   - dos ciudades: Guayaquil, donde pasa casi todo, y Quito, que existe para
+ *     probar que nada de una ciudad se filtra a la otra;
+ *   - en Guayaquil, un sitio con capacidad 1 (ahí se prueba el doble-reserva),
+ *     otro con 2 y un taller con UNA bahía (la capacidad de la profunda);
+ *   - en Quito, un sitio y un lavador;
+ *   - un usuario por rol, todos con la misma contraseña; el operador "operador"
+ *     es nacional y "opquito" es el operador de Quito.
  */
 const sembrar = async () => {
   await limpiar();
@@ -102,19 +106,32 @@ const sembrar = async () => {
     ]
   });
 
-  const [encerado, sitio, sitioAmplio] = await Promise.all([
+  const [guayaquil, quito] = await Promise.all([
+    prisma.ciudad.create({ data: { nombre: 'Guayaquil', provincia: 'Guayas' } }),
+    prisma.ciudad.create({ data: { nombre: 'Quito', provincia: 'Pichincha' } })
+  ]);
+
+  const [encerado, sitio, sitioAmplio, taller, sitioQuito] = await Promise.all([
     prisma.servicioAdicional.create({ data: { nombre: 'Encerado', precio: 5, duracion_min: 30, orden_display: 1 } }),
     // capacidad_expreso = 1 → el segundo que pida la misma franja se queda afuera
     prisma.estacionamiento.create({
-      data: { nombre: 'Edificio Central', ciudad: 'Guayaquil', capacidad_expreso: 1, duracion_franja_min: 60 }
+      data: { nombre: 'Edificio Central', id_ciudad: guayaquil.id, capacidad_expreso: 1, duracion_franja_min: 60 }
     }),
     prisma.estacionamiento.create({
-      data: { nombre: 'Torre Norte', ciudad: 'Guayaquil', capacidad_expreso: 2, duracion_franja_min: 60 }
+      data: { nombre: 'Torre Norte', id_ciudad: guayaquil.id, capacidad_expreso: 2, duracion_franja_min: 60 }
+    }),
+    prisma.estacionamiento.create({
+      data: { nombre: 'Taller Guayaquil', id_ciudad: guayaquil.id, tipo: 'taller', admite_expreso: false }
+    }),
+    // Sin capacidad propia: su capacidad expreso son los lavadores de Quito
+    prisma.estacionamiento.create({
+      data: { nombre: 'Condominio Quito', id_ciudad: quito.id, duracion_franja_min: 60 }
     }),
     precios
   ]);
-  const [lavador, ana, beto] = await Promise.all([
-    prisma.lavador.create({ data: { nombre: 'Luis Lavador', cedula: '0900000001' } }),
+  const [lavador, lavadorQuito, ana, beto] = await Promise.all([
+    prisma.lavador.create({ data: { nombre: 'Luis Lavador', cedula: '0900000001', id_ciudad: guayaquil.id } }),
+    prisma.lavador.create({ data: { nombre: 'Pedro Quiteño', cedula: '1700000001', id_ciudad: quito.id } }),
     prisma.cliente.create({
       data: { nombre: 'Ana Vera', cedula: '0910000001', telefono: '0999999999', email: 'ana@prueba.local' }
     }),
@@ -122,8 +139,8 @@ const sembrar = async () => {
       data: { nombre: 'Beto Ruiz', cedula: '0910000002', email: 'beto@prueba.local' }
     }),
     prisma.plaza.create({
-      // Una sola bahía: es la capacidad de la modalidad profunda, que es global.
-      data: { id_estacionamiento: sitio.id, codigo: 'B-01', tipo: 'bahia_lavado', estado: 'disponible' }
+      // Una sola bahía: es la capacidad de la modalidad profunda en el taller.
+      data: { id_estacionamiento: taller.id, codigo: 'B-01', tipo: 'bahia_lavado', estado: 'disponible' }
     })
   ]);
 
@@ -140,6 +157,8 @@ const sembrar = async () => {
     prisma.usuario.create({ data: { username: 'luis', password, rol: 'lavador', id_lavador: lavador.id } }),
     prisma.usuario.create({ data: { username: 'admin', password, rol: 'admin' } }),
     prisma.usuario.create({ data: { username: 'operador', password, rol: 'operador' } }),
+    prisma.usuario.create({ data: { username: 'opquito', password, rol: 'operador', id_ciudad: quito.id } }),
+    prisma.usuario.create({ data: { username: 'pedro', password, rol: 'lavador', id_lavador: lavadorQuito.id } }),
     prisma.usuario.create({ data: { username: 'ana@prueba.local', password, rol: 'cliente', id_cliente: ana.id } }),
     prisma.usuario.create({ data: { username: 'beto@prueba.local', password, rol: 'cliente', id_cliente: beto.id } })
   ]);
@@ -149,9 +168,13 @@ const sembrar = async () => {
     tipos: { liviano, moto },
     servicios: { expreso, profunda },
     adicionales: { encerado },
+    ciudades: { guayaquil, quito },
     sitio,
     sitioAmplio,
+    taller,
+    sitioQuito,
     lavador,
+    lavadorQuito,
     clientes: { ana, beto },
     vehiculos: { autoDeAna, motoDeAna, autoDeBeto }
   };

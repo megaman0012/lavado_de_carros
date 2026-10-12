@@ -5,6 +5,7 @@
  */
 
 const prisma = require('../db');
+const alcance = require('../utils/alcance');
 const fechas = require('../utils/fechas');
 
 // Mismo criterio que crear reserva: el mes se cuenta sobre `Reserva.fecha`
@@ -80,9 +81,13 @@ const contarUsoMes = async (id_suscripcion) => {
 
 const listarSuscripciones = async (req, res) => {
   try {
+    const ciudad = alcance.ciudadFiltro(req);
     const suscripciones = await prisma.suscripcion.findMany({
-      where: { estado: 'activa' },
-      include: { plan: true, estacionamiento: { select: { id: true, nombre: true } } },
+      where: { estado: 'activa', ...(ciudad && { estacionamiento: { is: { id_ciudad: ciudad } } }) },
+      include: {
+        plan: true,
+        estacionamiento: { select: { id: true, nombre: true, ciudad: { select: { id: true, nombre: true } } } }
+      },
       orderBy: { fecha_inicio: 'desc' }
     });
     const conUso = await Promise.all(
@@ -100,6 +105,13 @@ const crearSuscripcion = async (req, res) => {
     const { id_estacionamiento, id_plan } = req.body;
     if (!id_estacionamiento || !id_plan) {
       return res.status(400).json({ success: false, message: 'Estacionamiento y plan son obligatorios' });
+    }
+
+    const sitio = await prisma.estacionamiento.findUnique({ where: { id: parseInt(id_estacionamiento) } });
+    if (!sitio) return res.status(400).json({ success: false, message: 'Estacionamiento inexistente' });
+    if (!alcance.puedeVer(req.usuario, sitio.id_ciudad)) return alcance.fueraDeAlcance(res);
+    if (sitio.tipo === 'taller') {
+      return res.status(400).json({ success: false, message: 'Los planes son para sitios aliados (edificios, condominios), no para talleres' });
     }
 
     const plan = await prisma.plan.findUnique({ where: { id: parseInt(id_plan) } });
@@ -127,8 +139,14 @@ const crearSuscripcion = async (req, res) => {
 
 const cancelarSuscripcion = async (req, res) => {
   try {
-    const suscripcion = await prisma.suscripcion.update({
+    const actual = await prisma.suscripcion.findUnique({
       where: { id: parseInt(req.params.id) },
+      include: { estacionamiento: { select: { id_ciudad: true } } }
+    });
+    if (!actual) return res.status(404).json({ success: false, message: 'Suscripción no encontrada' });
+    if (!alcance.puedeVer(req.usuario, actual.estacionamiento.id_ciudad)) return alcance.fueraDeAlcance(res);
+    const suscripcion = await prisma.suscripcion.update({
+      where: { id: actual.id },
       data: { estado: 'cancelada', fecha_cancelacion: new Date() }
     });
     res.json({ success: true, data: suscripcion });

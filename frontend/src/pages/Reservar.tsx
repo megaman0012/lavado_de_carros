@@ -7,7 +7,7 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Logo from '../components/Logo';
 import FormVehiculo, { IconoTipo, SelectorTipoVehiculo, useTiposVehiculo } from '../components/FormVehiculo';
-import { TipoServicio, Estacionamiento, Vehiculo, FranjaDisponibilidad, ServicioAdicional } from '../types';
+import { TipoServicio, Estacionamiento, Vehiculo, FranjaDisponibilidad, ServicioAdicional, Ciudad } from '../types';
 import { hoyISO, fechaLarga, proximosDias, partesDia } from '../utils/fechas';
 import { tarifaPara, dinero, totales } from '../utils/catalogo';
 
@@ -17,7 +17,8 @@ import { tarifaPara, dinero, totales } from '../utils/catalogo';
  *   1 Vehículo    ≈ tipo de sala: define qué servicios hay y a qué precio
  *   2 Servicio    ≈ la película (cartelera filtrada por el tipo de vehículo)
  *   3 Adicionales ≈ la confitería (opcional, suma precio y minutos)
- *   4 Lugar       ≈ el cine (estacionamiento, o la bahía para limpieza profunda)
+ *   4 Lugar       ≈ el cine: primero la ciudad, después el estacionamiento
+ *                   (o el taller de esa ciudad, para limpieza profunda)
  *   5 Función     ≈ día y hora, con los cupos que quedan en cada franja
  *   6 Boleto      ≈ resumen con el total antes de confirmar
  *
@@ -27,6 +28,17 @@ import { tarifaPara, dinero, totales } from '../utils/catalogo';
  */
 
 const PASOS = ['Vehículo', 'Servicio', 'Adicionales', 'Lugar', 'Función', 'Boleto'];
+
+// La ciudad del cliente se recuerda en el teléfono: casi siempre lava en la misma
+const LLAVE_CIUDAD = 'ciudad_cliente';
+const ciudadGuardada = (): number | null => {
+  try {
+    const v = parseInt(localStorage.getItem(LLAVE_CIUDAD) || '');
+    return v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+};
 const DIAS_CARTELERA = 14;
 
 const Reservar: React.FC = () => {
@@ -38,6 +50,8 @@ const Reservar: React.FC = () => {
 
   const [servicios, setServicios] = useState<TipoServicio[]>([]);
   const [adicionales, setAdicionales] = useState<ServicioAdicional[]>([]);
+  const [ciudades, setCiudades] = useState<Ciudad[]>([]);
+  const [ciudadId, setCiudadId] = useState<number | null>(ciudadGuardada);
   const [estacionamientos, setEstacionamientos] = useState<Estacionamiento[]>([]);
   const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
 
@@ -70,7 +84,7 @@ const Reservar: React.FC = () => {
   const pasoMaximo =
     !esCliente || !vehiculo?.id_tipo_vehiculo ? 1
       : !tarifa ? 2
-      : servicio?.modalidad === 'expreso' && !estacionamientoId ? 4
+      : !estacionamientoId ? 4
       : !franjaSel ? 5
       : 6;
   const pasoURL = parseInt(params.get('paso') || '1') || 1;
@@ -99,8 +113,40 @@ const Reservar: React.FC = () => {
   useEffect(() => {
     api.get('/public/servicios').then((r) => setServicios(r.data)).catch(() => {});
     api.get('/public/adicionales').then((r) => setAdicionales(r.data)).catch(() => {});
-    api.get('/public/estacionamientos').then((r) => setEstacionamientos(r.data)).catch(() => {});
+    api.get('/public/ciudades').then((r) => setCiudades(r.data)).catch(() => {});
   }, []);
+
+  // Ciudad: si hay una sola, no se pregunta; si la guardada ya no se ofrece, se olvida
+  useEffect(() => {
+    if (ciudades.length === 0) return;
+    if (ciudades.length === 1) setCiudadId(ciudades[0].id);
+    else if (ciudadId && !ciudades.some((c) => c.id === ciudadId)) setCiudadId(null);
+  }, [ciudades, ciudadId]);
+
+  const elegirCiudad = (id: number) => {
+    setCiudadId(id);
+    setEstacionamientoId(null);
+    try { localStorage.setItem(LLAVE_CIUDAD, String(id)); } catch { /* sin almacenamiento: no se recuerda */ }
+  };
+
+  // Lugares de la ciudad: edificios para el expreso, el taller para la profunda
+  const modalidad = servicio?.modalidad;
+  useEffect(() => {
+    if (!ciudadId || !modalidad) { setEstacionamientos([]); return; }
+    api.get('/public/estacionamientos', {
+      params: { id_ciudad: ciudadId, ...(modalidad === 'profunda' && { tipo: 'taller' }) }
+    })
+      .then((r) => {
+        const lista: Estacionamiento[] = r.data;
+        setEstacionamientos(lista);
+        // Lo elegido antes ya no sirve (cambió de ciudad o de modalidad); con un único taller, se elige solo
+        setEstacionamientoId((actual) =>
+          actual && lista.some((e) => e.id === actual) ? actual
+            : modalidad === 'profunda' && lista.length === 1 ? lista[0].id
+            : null);
+      })
+      .catch(() => setEstacionamientos([]));
+  }, [ciudadId, modalidad]);
 
   useEffect(() => {
     if (!esCliente) return;
@@ -116,8 +162,7 @@ const Reservar: React.FC = () => {
     if (paso !== 5 || !servicio || !tarifa) return;
     setCargando(true);
     setError('');
-    const q: any = { fecha, modalidad: servicio.modalidad, duracion_min: total.duracion };
-    if (servicio.modalidad === 'expreso' && estacionamientoId) q.id_estacionamiento = estacionamientoId;
+    const q: any = { fecha, modalidad: servicio.modalidad, duracion_min: total.duracion, id_estacionamiento: estacionamientoId };
     api.get('/agenda/disponibilidad', { params: q })
       .then((r) => setFranjas(r.data.franjas || []))
       .catch((e) => setError(e.message))
@@ -167,9 +212,9 @@ const Reservar: React.FC = () => {
         id_tipo_servicio: servicio.id,
         fecha,
         hora_inicio: franjaSel.hora_inicio,
-        adicionales: adicionalesSel
+        adicionales: adicionalesSel,
+        id_estacionamiento: estacionamientoId
       };
-      if (servicio.modalidad === 'expreso') body.id_estacionamiento = estacionamientoId;
       const r = await api.post('/reservas', body);
       setExito(r.data);
     } catch (e: any) {
@@ -209,7 +254,7 @@ const Reservar: React.FC = () => {
     (paso === 1 && !!vehiculo?.id_tipo_vehiculo) ||
     (paso === 2 && !!tarifa) ||
     paso === 3 ||
-    (paso === 4 && (servicio?.modalidad === 'profunda' || !!estacionamientoId)) ||
+    (paso === 4 && !!estacionamientoId) ||
     (paso === 5 && !!franjaSel);
 
   const tarjeta = (activo: boolean) =>
@@ -402,26 +447,60 @@ const Reservar: React.FC = () => {
 
         {/* ---------- 4. Lugar ---------- */}
         {paso === 4 && (
-          servicio?.modalidad === 'profunda' ? (
-            <div className="bg-white rounded-xl p-6 text-center">
-              <MapPin className="mx-auto text-purple-600 mb-2" />
-              <p className="text-slate-700">La limpieza profunda se realiza en nuestras bahías.</p>
-              <p className="text-sm text-slate-500 mt-1">Al confirmar te asignaremos la bahía disponible en el horario elegido.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <h2 className="text-lg font-bold text-slate-800">¿Dónde está tu vehículo?</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {estacionamientos.map((e) => (
-                  <button key={e.id} onClick={() => setEstacionamientoId(e.id)} className={tarjeta(estacionamientoId === e.id)}>
-                    <h3 className="font-semibold text-slate-800">{e.nombre}</h3>
-                    <p className="text-sm text-slate-500">{e.direccion}</p>
-                    <p className="text-xs text-slate-400 mt-1">{e.horario_apertura} – {e.horario_cierre}</p>
-                  </button>
-                ))}
+          <div className="space-y-4">
+            {ciudades.length > 1 && (
+              <div>
+                <h2 className="text-lg font-bold text-slate-800 mb-2">¿En qué ciudad?</h2>
+                <div className="flex flex-wrap gap-2">
+                  {ciudades.map((c) => (
+                    <button key={c.id} onClick={() => elegirCiudad(c.id)} aria-pressed={ciudadId === c.id}
+                      className={`px-4 py-2 rounded-full border text-sm transition ${ciudadId === c.id ? 'bg-sky-600 border-sky-600 text-white' : 'bg-white border-slate-300 text-slate-700 hover:border-sky-400'}`}>
+                      {c.nombre}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          )
+            )}
+
+            {ciudadId && (
+              servicio?.modalidad === 'profunda' ? (
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800 mb-1">Llevas tu vehículo a nuestro taller</h2>
+                  <p className="text-sm text-slate-500 mb-3">La limpieza profunda se hace en bahía; te asignamos la que esté libre en el horario elegido.</p>
+                  {estacionamientos.length === 0 ? (
+                    <p className="bg-white rounded-xl p-5 text-sm text-slate-500">Todavía no tenemos taller en esta ciudad.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {estacionamientos.map((e) => (
+                        <button key={e.id} onClick={() => setEstacionamientoId(e.id)} className={tarjeta(estacionamientoId === e.id)}>
+                          <h3 className="font-semibold text-slate-800 flex items-center gap-1.5"><MapPin size={16} className="text-purple-600" /> {e.nombre}</h3>
+                          <p className="text-sm text-slate-500">{e.direccion}</p>
+                          <p className="text-xs text-slate-400 mt-1">{e.horario_apertura} – {e.horario_cierre}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800 mb-2">¿Dónde está tu vehículo?</h2>
+                  {estacionamientos.length === 0 ? (
+                    <p className="bg-white rounded-xl p-5 text-sm text-slate-500">Todavía no hay estacionamientos con este servicio en esta ciudad.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {estacionamientos.map((e) => (
+                        <button key={e.id} onClick={() => setEstacionamientoId(e.id)} className={tarjeta(estacionamientoId === e.id)}>
+                          <h3 className="font-semibold text-slate-800">{e.nombre}</h3>
+                          <p className="text-sm text-slate-500">{e.direccion}</p>
+                          <p className="text-xs text-slate-400 mt-1">{e.horario_apertura} – {e.horario_cierre}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            )}
+          </div>
         )}
 
         {/* ---------- 5. Función (día y hora) ---------- */}
@@ -494,7 +573,10 @@ const Reservar: React.FC = () => {
               </div>
               <div className="flex justify-between gap-3">
                 <span className="text-slate-500">Lugar</span>
-                <span className="text-right">{servicio.modalidad === 'profunda' ? 'Bahía de lavado' : lugar?.nombre}</span>
+                <span className="text-right">
+                  {servicio.modalidad === 'profunda' ? `Bahía · ${lugar?.nombre}` : lugar?.nombre}
+                  {lugar?.ciudad && <span className="block text-xs text-slate-400">{lugar.ciudad.nombre}</span>}
+                </span>
               </div>
               <div className="border-t border-dashed border-slate-200 pt-3 flex justify-between gap-3">
                 <span>{servicio.nombre} <span className="text-slate-400">({tarifa.duracion_min} min)</span></span>

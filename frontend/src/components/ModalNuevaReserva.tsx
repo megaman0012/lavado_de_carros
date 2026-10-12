@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, Search, Car, CalendarPlus, CheckCircle2, UserPlus } from 'lucide-react';
 import api from '../services/api';
+import { useFiltroCiudad } from './FiltroCiudad';
 import { Cliente, Vehiculo, TipoServicio, Estacionamiento, FranjaDisponibilidad, ServicioAdicional } from '../types';
 import FormVehiculo, { SelectorTipoVehiculo, useTiposVehiculo } from './FormVehiculo';
 import { hoyISO, fechaCorta } from '../utils/fechas';
@@ -47,6 +48,27 @@ const ModalNuevaReserva: React.FC<{ onClose: () => void; onCreada: () => void }>
   const extras = adicionales.filter((a) => adicionalesSel.includes(a.id));
   const total = totales(tarifa, extras);
 
+  // Sitios que sirven para el servicio elegido: sitios aliados para el expreso,
+  // talleres para la profunda. Si el panel está filtrado por ciudad, solo los de ella.
+  const filtro = useFiltroCiudad();
+  const idCiudadFiltro = filtro.idCiudad;
+  const sitiosPosibles = useMemo(() => estacionamientos.filter((e) =>
+    e.estado !== 'inactivo' &&
+    (!idCiudadFiltro || e.id_ciudad === idCiudadFiltro) &&
+    (servicio?.modalidad === 'profunda' ? e.tipo === 'taller' : e.tipo !== 'taller' && e.admite_expreso !== false)
+  ), [estacionamientos, idCiudadFiltro, servicio]);
+  const varias = new Set(sitiosPosibles.map((e) => e.id_ciudad)).size > 1;
+
+  // Cambiar de expreso a profunda (o al revés) invalida el sitio elegido; con
+  // un único taller posible, se elige solo
+  useEffect(() => {
+    if (!servicio) return;
+    if (estacionamientoId && !sitiosPosibles.some((e) => e.id === estacionamientoId)) setEstacionamientoId('');
+    if (!estacionamientoId && servicio.modalidad === 'profunda' && sitiosPosibles.length === 1) {
+      setEstacionamientoId(sitiosPosibles[0].id);
+    }
+  }, [servicio, estacionamientoId, sitiosPosibles]);
+
   useEffect(() => {
     api.get('/servicios', { params: { activo: true } }).then((r) => setServicios(r.data)).catch(() => {});
     api.get('/public/adicionales').then((r) => setAdicionales(r.data)).catch(() => {});
@@ -83,11 +105,12 @@ const ModalNuevaReserva: React.FC<{ onClose: () => void; onCreada: () => void }>
   // Disponibilidad (con la duración total: servicio para ese tipo + adicionales)
   useEffect(() => {
     if (!servicio || !tarifa) { setFranjas([]); return; }
-    if (servicio.modalidad === 'expreso' && !estacionamientoId) { setFranjas([]); return; }
+    if (!estacionamientoId) { setFranjas([]); return; }
     setCargandoFranjas(true);
     setFranjaSel(null);
-    const params: any = { fecha, modalidad: servicio.modalidad, duracion_min: total.duracion };
-    if (servicio.modalidad === 'expreso') params.id_estacionamiento = estacionamientoId;
+    const params: any = {
+      fecha, modalidad: servicio.modalidad, duracion_min: total.duracion, id_estacionamiento: estacionamientoId
+    };
     api.get('/agenda/disponibilidad', { params })
       .then((r) => setFranjas(r.data.franjas || []))
       .catch((e) => setError(e.message))
@@ -116,9 +139,9 @@ const ModalNuevaReserva: React.FC<{ onClose: () => void; onCreada: () => void }>
         id_tipo_servicio: servicio.id,
         fecha,
         hora_inicio: franjaSel.hora_inicio,
-        adicionales: adicionalesSel
+        adicionales: adicionalesSel,
+        id_estacionamiento: estacionamientoId
       };
-      if (servicio.modalidad === 'expreso') body.id_estacionamiento = estacionamientoId;
       const r = await api.post('/reservas', body);
       setExito(r.data);
       onCreada();
@@ -261,18 +284,14 @@ const ModalNuevaReserva: React.FC<{ onClose: () => void; onCreada: () => void }>
                 })}
               </select>
 
-              {servicio?.modalidad === 'expreso' ? (
+              {servicio ? (
                 <select value={estacionamientoId} onChange={(e) => setEstacionamientoId(e.target.value ? Number(e.target.value) : '')}
                   className="px-3 py-2 border border-slate-300 rounded-lg">
-                  <option value="">Seleccione el estacionamiento…</option>
-                  {estacionamientos.filter((e) => e.admite_expreso !== false).map((e) => (
-                    <option key={e.id} value={e.id}>{e.nombre}</option>
+                  <option value="">{servicio.modalidad === 'profunda' ? 'Seleccione el taller…' : 'Seleccione el estacionamiento…'}</option>
+                  {sitiosPosibles.map((e) => (
+                    <option key={e.id} value={e.id}>{e.nombre}{varias && e.ciudad ? ` · ${e.ciudad.nombre}` : ''}</option>
                   ))}
                 </select>
-              ) : servicio ? (
-                <div className="px-3 py-2 bg-purple-50 text-purple-700 rounded-lg text-sm flex items-center">
-                  Limpieza profunda — se atiende en la bahía
-                </div>
               ) : <span />}
 
               <input type="date" value={fecha} min={hoyISO()} onChange={(e) => setFecha(e.target.value)}
@@ -308,8 +327,10 @@ const ModalNuevaReserva: React.FC<{ onClose: () => void; onCreada: () => void }>
                 <p className="text-sm text-slate-400">Consultando disponibilidad…</p>
               ) : franjas.length === 0 ? (
                 <p className="text-sm text-slate-400">
-                  {servicio.modalidad === 'expreso' && !estacionamientoId
-                    ? 'Elija un estacionamiento para ver los horarios.'
+                  {!estacionamientoId
+                    ? (sitiosPosibles.length === 0
+                      ? (servicio.modalidad === 'profunda' ? 'No hay talleres en esta ciudad.' : 'No hay sitios con expreso en esta ciudad.')
+                      : servicio.modalidad === 'profunda' ? 'Elija el taller para ver los horarios.' : 'Elija un estacionamiento para ver los horarios.')
                     : 'No hay horarios para ese día.'}
                 </p>
               ) : (

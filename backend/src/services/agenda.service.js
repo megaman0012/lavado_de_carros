@@ -6,9 +6,12 @@
  * cupo de "butacas" (lavadores o bahías). Una función se llena cuando
  * ocupaciones >= capacidad, y una función que ya empezó no se vende.
  *
- * Reglas:
- * - EXPRESO: capacidad = lavadores activos (servicio en el estacionamiento del cliente).
- * - PROFUNDA: capacidad = bahías de lavado disponibles (cliente trae el carro al taller).
+ * Reglas (la operación es nacional, pero cada "cine" es de una sola ciudad):
+ * - EXPRESO: capacidad = la configurada en el sitio o, si no tiene, los
+ *   lavadores activos DE SU CIUDAD (servicio en el estacionamiento del cliente).
+ * - PROFUNDA: capacidad = bahías disponibles DEL TALLER elegido (el cliente
+ *   lleva el carro; hay un taller por ciudad).
+ * - Bloqueos manuales: nacionales, de una ciudad o de un sitio (ver aplicaBloqueo).
  * - Una franja está bloqueada cuando ocupaciones >= capacidad.
  *
  * disponibilidadDia() y crear reserva usan las MISMAS funciones de conteo y
@@ -36,25 +39,40 @@ const aHHMM = (minutos) => {
 const solapan = (ini1, fin1, ini2, fin2) =>
   aMinutos(ini1) < aMinutos(fin2) && aMinutos(ini2) < aMinutos(fin1);
 
-// Capacidad según modalidad
-// - profunda: bahías físicas (global, el taller es uno)
-// - expreso: capacidad del sitio si está configurada (>0); si no, lavadores activos globales
-const obtenerCapacidad = async (modalidad, estacionamiento = null, db = prisma) => {
+// Capacidad según modalidad, para un sitio concreto
+// - profunda: bahías disponibles de ESE taller
+// - expreso: capacidad del sitio si está configurada (>0); si no, lavadores
+//   activos de la ciudad del sitio
+// Sin sitio (resumen de la vista del día) se cuenta lo de toda la ciudad
+// `idCiudad`, o del país si tampoco se indica.
+const obtenerCapacidad = async (modalidad, estacionamiento = null, db = prisma, idCiudad = null) => {
   if (modalidad === 'profunda') {
+    const delSitio = estacionamiento
+      ? { id_estacionamiento: estacionamiento.id }
+      : idCiudad ? { estacionamiento: { id_ciudad: idCiudad } } : {};
     return db.plaza.count({
-      where: { tipo: 'bahia_lavado', estado: 'disponible' }
+      where: { tipo: 'bahia_lavado', estado: 'disponible', ...delSitio }
     });
   }
   if (estacionamiento && estacionamiento.capacidad_expreso > 0) {
     return estacionamiento.capacidad_expreso;
   }
-  // expreso: lavadores activos
-  return db.lavador.count({ where: { estado: 'activo' } });
+  const ciudad = estacionamiento?.id_ciudad || idCiudad;
+  return db.lavador.count({ where: { estado: 'activo', ...(ciudad && { id_ciudad: ciudad }) } });
 };
 
-// Ocupaciones activas que se solapan con una franja
-// - profunda: cuenta global (bahías del taller)
-// - expreso: cuenta solo lo ocupado en el mismo sitio; bloqueos manuales cuentan para todos
+// ¿Un bloqueo manual afecta a este sitio? Nacional (sin ciudad ni sitio), de la
+// ciudad del sitio, o del sitio mismo.
+const aplicaBloqueo = (bloqueo, estacionamiento) => {
+  if (bloqueo.id_estacionamiento) return bloqueo.id_estacionamiento === estacionamiento?.id;
+  if (bloqueo.id_ciudad) return bloqueo.id_ciudad === estacionamiento?.id_ciudad;
+  return true;
+};
+
+// Ocupaciones activas que se solapan con una franja, en UN sitio
+// - reservas: solo las de la misma modalidad en el mismo sitio (para profunda,
+//   el sitio es el taller)
+// - bloqueos manuales: los que alcanzan al sitio (aplicaBloqueo), en ambas modalidades
 // `db` permite correrlo dentro de la transacción de crear reserva.
 // `asignaciones` permite reutilizar la lectura del día al recorrer muchas franjas.
 const ocupacionesDelDia = (dia, db = prisma) =>
@@ -63,21 +81,34 @@ const ocupacionesDelDia = (dia, db = prisma) =>
     include: { reserva: { select: { modalidad: true, id_estacionamiento: true } } }
   });
 
-const contarOcupaciones = async ({ fecha, horaInicio, horaFin, modalidad, idEstacionamiento, db = prisma, asignaciones }) => {
+const contarOcupaciones = async ({ fecha, horaInicio, horaFin, modalidad, estacionamiento, db = prisma, asignaciones }) => {
   const dia = fechas.fechaDia(fecha);
   if (!asignaciones) asignaciones = await ocupacionesDelDia(dia, db);
 
-  const mismoSitio = (a) =>
-    !a.reserva || // bloqueo manual: bloquea ambas modalidades en todos los sitios
-    a.reserva.modalidad !== 'expreso' || // profunda no compite por sitios
-    a.reserva.id_estacionamiento === Number(idEstacionamiento);
+  const cuenta = (a) =>
+    a.reserva
+      ? a.reserva.modalidad === modalidad && a.reserva.id_estacionamiento === estacionamiento.id
+      : aplicaBloqueo(a, estacionamiento);
 
   return asignaciones.filter(
-    (a) =>
-      solapan(horaInicio, horaFin, a.hora_inicio, a.hora_fin) &&
-      (!a.reserva || a.reserva.modalidad === modalidad) &&
-      (modalidad === 'profunda' || mismoSitio(a))
+    (a) => solapan(horaInicio, horaFin, a.hora_inicio, a.hora_fin) && cuenta(a)
   ).length;
+};
+
+/**
+ * El sitio tiene que servir para la modalidad: la limpieza profunda se hace en
+ * un taller y el expreso en un sitio aliado que lo admita. Lanza 400 si no.
+ */
+const validarSitio = (est, modalidad) => {
+  if (est.estado !== 'activo') {
+    throw Object.assign(new Error('Estacionamiento no disponible'), { statusCode: 400 });
+  }
+  if (modalidad === 'profunda' && est.tipo !== 'taller') {
+    throw Object.assign(new Error('La limpieza profunda se hace en un taller: elija uno'), { statusCode: 400 });
+  }
+  if (modalidad === 'expreso' && (est.tipo === 'taller' || !est.admite_expreso)) {
+    throw Object.assign(new Error('Este sitio no admite servicio expreso'), { statusCode: 400 });
+  }
 };
 
 /**
@@ -85,24 +116,26 @@ const contarOcupaciones = async ({ fecha, horaInicio, horaFin, modalidad, idEsta
  * @param {string} fecha "YYYY-MM-DD"
  * @param {string} modalidad "expreso" | "profunda"
  * @param {number} duracionMin duración del servicio elegido
- * @param {number} [idEstacionamiento] obligatorio para expreso
+ * @param {number} idEstacionamiento el sitio (expreso) o el taller (profunda)
  */
 const disponibilidadDia = async ({ fecha, modalidad, duracionMin = 60, idEstacionamiento }) => {
   const dia = fechas.fechaDia(fecha);
   if (!dia) throw Object.assign(new Error('Fecha inválida'), { statusCode: 400 });
 
-  let apertura = '07:00';
-  let cierre = '18:00';
-  let est = null;
-
-  if (idEstacionamiento) {
-    est = await prisma.estacionamiento.findUnique({
-      where: { id: parseInt(idEstacionamiento) }
-    });
-    if (!est) throw Object.assign(new Error('Estacionamiento no encontrado'), { statusCode: 404 });
-    if (est.horario_apertura) apertura = est.horario_apertura;
-    if (est.horario_cierre) cierre = est.horario_cierre;
+  // Sin sitio no hay "cine": la capacidad depende de la ciudad y del lugar
+  if (!parseInt(idEstacionamiento)) {
+    throw Object.assign(
+      new Error(modalidad === 'profunda' ? 'Indique el taller' : 'Indique el estacionamiento'),
+      { statusCode: 400 }
+    );
   }
+  const est = await prisma.estacionamiento.findUnique({
+    where: { id: parseInt(idEstacionamiento) }
+  });
+  if (!est) throw Object.assign(new Error('Estacionamiento no encontrado'), { statusCode: 404 });
+  validarSitio(est, modalidad);
+  const apertura = est.horario_apertura || '07:00';
+  const cierre = est.horario_cierre || '18:00';
 
   const capacidad = await obtenerCapacidad(modalidad, est);
   // Granularidad de la grilla: configurable por sitio (default global 60 min)
@@ -126,7 +159,7 @@ const disponibilidadDia = async ({ fecha, modalidad, duracionMin = 60, idEstacio
   for (let t = inicioMin; t + duracionMin <= finMin; t += paso) {
     const horaInicio = aHHMM(t);
     const horaFin = aHHMM(t + duracionMin);
-    const ocupadas = await contarOcupaciones({ fecha: dia, horaInicio, horaFin, modalidad, idEstacionamiento, asignaciones });
+    const ocupadas = await contarOcupaciones({ fecha: dia, horaInicio, horaFin, modalidad, estacionamiento: est, asignaciones });
     const cupos = Math.max(capacidad - ocupadas, 0);
     const pasada = dia < hoy || (esHoy && t <= ahoraMin);
     franjas.push({
@@ -143,4 +176,7 @@ const disponibilidadDia = async ({ fecha, modalidad, duracionMin = 60, idEstacio
   return { fecha: fechas.aISO(dia), modalidad, capacidad, apertura, cierre, franjas };
 };
 
-module.exports = { disponibilidadDia, contarOcupaciones, ocupacionesDelDia, obtenerCapacidad, solapan, aMinutos, aHHMM };
+module.exports = {
+  disponibilidadDia, contarOcupaciones, ocupacionesDelDia, obtenerCapacidad, aplicaBloqueo, validarSitio,
+  solapan, aMinutos, aHHMM
+};

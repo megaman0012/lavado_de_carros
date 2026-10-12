@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Wrench, Pencil, X, KeyRound, UserCheck, UserX, Info, Copy, Check } from 'lucide-react';
 import api from '../services/api';
 import { Lavador } from '../types';
+import FiltroCiudad, { useCiudades, useFiltroCiudad } from '../components/FiltroCiudad';
 
-const FORM_VACIO = { nombre: '', cedula: '', telefono: '' };
+// id_ciudad 0 = "la del filtro" (o la del operador de ciudad)
+const FORM_VACIO = { nombre: '', cedula: '', telefono: '', id_ciudad: 0 };
 
 // ==================== MODAL: CUENTA DE ACCESO ====================
 // Hasta ahora no había forma de darle credenciales a un lavador: los únicos
@@ -135,6 +137,8 @@ const ModalCuenta: React.FC<{ lavador: Lavador; onClose: () => void; onDone: () 
 
 // ==================== PÁGINA LAVADORES ====================
 const Lavadores: React.FC = () => {
+  const filtro = useFiltroCiudad();
+  const ciudades = useCiudades();
   const [lavadores, setLavadores] = useState<Lavador[]>([]);
   const [form, setForm] = useState(FORM_VACIO);
   const [editando, setEditando] = useState<Lavador | null>(null);
@@ -143,20 +147,22 @@ const Lavadores: React.FC = () => {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
 
+  const idCiudad = filtro.idCiudad;
   const cargar = useCallback(() => {
     setCargando(true);
-    api.get('/lavadores')
+    api.get('/lavadores', { params: idCiudad ? { id_ciudad: idCiudad } : {} })
       .then((r) => setLavadores(r.data))
       .catch(() => setLavadores([]))
       .finally(() => setCargando(false));
-  }, []);
+  }, [idCiudad]);
+  const ciudadForm = form.id_ciudad || filtro.idCiudad || 0;
 
   useEffect(cargar, [cargar]);
 
   const empezarEdicion = (l: Lavador) => {
     setEditando(l);
     setError('');
-    setForm({ nombre: l.nombre, cedula: l.cedula || '', telefono: l.telefono || '' });
+    setForm({ nombre: l.nombre, cedula: l.cedula || '', telefono: l.telefono || '', id_ciudad: l.id_ciudad });
   };
 
   const cancelarEdicion = () => {
@@ -170,10 +176,11 @@ const Lavadores: React.FC = () => {
     setGuardando(true);
     setError('');
     try {
+      const datos = { ...form, id_ciudad: ciudadForm || undefined };
       if (editando) {
-        await api.put(`/lavadores/${editando.id}`, form);
+        await api.put(`/lavadores/${editando.id}`, datos);
       } else {
-        await api.post('/lavadores', form);
+        await api.post('/lavadores', datos);
       }
       cancelarEdicion();
       cargar();
@@ -188,7 +195,7 @@ const Lavadores: React.FC = () => {
     const suspendiendo = l.estado === 'activo';
     if (suspendiendo && !window.confirm(
       `¿Suspender a ${l.nombre}?\n\nDos efectos:\n` +
-      '• Baja la capacidad de lavados simultáneos del día (la agenda ofrecerá menos cupos).\n' +
+      `• Baja la capacidad de lavados simultáneos en ${l.ciudad?.nombre || 'su ciudad'} (la agenda ofrecerá menos cupos).\n` +
       (l.usuario ? '• Pierde el acceso al sistema hasta que se lo reactive.\n' : '') +
       '\nSus trabajos ya registrados no se tocan.'
     )) return;
@@ -202,10 +209,13 @@ const Lavadores: React.FC = () => {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-        <Wrench className="text-sky-600" /> Lavadores
-        <span className="text-sm font-normal text-slate-400">(definen la capacidad expresa diaria)</span>
-      </h1>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+          <Wrench className="text-sky-600" /> Lavadores
+          <span className="text-sm font-normal text-slate-400">(definen la capacidad expresa de su ciudad)</span>
+        </h1>
+        <FiltroCiudad filtro={filtro} />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <form onSubmit={guardar} className={`bg-white rounded-xl shadow-sm p-5 space-y-3 h-fit ${editando ? 'ring-2 ring-sky-400' : ''}`}>
@@ -224,6 +234,18 @@ const Lavadores: React.FC = () => {
             placeholder="Cédula" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
           <input value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })}
             placeholder="Teléfono" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+          {filtro.fija ? (
+            <p className="text-xs text-slate-500">Ciudad: <b>{filtro.fija.nombre}</b></p>
+          ) : (
+            <div>
+              <label className="text-xs text-slate-500">Ciudad donde trabaja</label>
+              <select required value={ciudadForm || ''} onChange={(e) => setForm({ ...form, id_ciudad: Number(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                <option value="" disabled>Ciudad…</option>
+                {ciudades.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+            </div>
+          )}
           {error && <p className="text-sm text-red-600">{error}</p>}
           <button type="submit" disabled={guardando}
             className="w-full bg-sky-600 text-white py-2 rounded-lg hover:bg-sky-700 disabled:opacity-50">
@@ -245,6 +267,7 @@ const Lavadores: React.FC = () => {
                 <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
                   <tr>
                     <th className="px-4 py-3 text-left">Nombre</th>
+                    <th className="px-4 py-3 text-left">Ciudad</th>
                     <th className="px-4 py-3 text-left">Cédula</th>
                     <th className="px-4 py-3 text-left">Teléfono</th>
                     <th className="px-4 py-3 text-left">Acceso</th>
@@ -256,6 +279,7 @@ const Lavadores: React.FC = () => {
                   {lavadores.map((l) => (
                     <tr key={l.id} className={`hover:bg-slate-50 ${editando?.id === l.id ? 'bg-sky-50' : ''} ${l.estado === 'activo' ? '' : 'opacity-60'}`}>
                       <td className="px-4 py-3 font-medium">{l.nombre}</td>
+                      <td className="px-4 py-3">{l.ciudad?.nombre || '—'}</td>
                       <td className="px-4 py-3">{l.cedula || '—'}</td>
                       <td className="px-4 py-3">{l.telefono || '—'}</td>
                       <td className="px-4 py-3">

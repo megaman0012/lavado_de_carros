@@ -2,6 +2,57 @@
 
 ## [Sin publicar]
 
+### 2026-10-12 — Operación nacional por ciudades (fase 1 de la expansión, pendiente de desplegar)
+
+Primera de cuatro fases (ciudades → empresas → lavado remoto → VIP). Con sitios
+en Quito y Guayaquil la agenda ya mezclaba ciudades; esta fase lo corrige y deja
+la base para las siguientes.
+
+#### Corregido
+- **La capacidad expreso sumaba lavadores de todo el país.** Un sitio sin
+  capacidad propia ofrecía cupos con lavadores de otra ciudad. Ahora cuenta solo
+  los de su ciudad.
+- **La limpieza profunda contaba las bahías de todo el país** ("el taller es
+  uno"). Ahora se reserva en un taller concreto y cuenta solo sus bahías.
+- **Un bloqueo manual cerraba todos los sitios del país.** Ahora tiene alcance:
+  un sitio, una ciudad o, a propósito, todo el país.
+- La ciudad era texto libre y ya convivían "Quito" y "GUAYAQUIL": pasa a ser una
+  tabla y se normaliza la escritura.
+
+#### Agregado
+- Tabla **`Ciudad`**. Cada sitio, lavador y operador pertenece a una.
+- **Tipo de sitio:** `aliado` (edificio/condominio, expreso) o `taller` (bahías
+  de la limpieza profunda). Un taller no admite expreso ni planes.
+- **Operador por ciudad.** Solo ve y gestiona lo de su ciudad (reservas, agenda,
+  sitios, lavadores, pagos, reportes, actas), aunque cambie la URL. Un operador
+  sin ciudad es nacional. Servicios, precios, adicionales y tipos de vehículo
+  valen para todo el país y solo los cambia lo nacional.
+- Pantalla **Usuarios** (admin): crear operadores con su ciudad, trasladarlos,
+  suspenderlos (los saca de inmediato) y restablecer su contraseña. Antes no
+  había forma de crear operadores desde el panel.
+- Pantalla **Ciudades** (admin).
+- **Filtro de ciudad** en Dashboard, Agenda, Reservas, Estacionamientos,
+  Lavadores y Reportes. Recuerda la elección por navegador.
+- **Reporte por ciudad** (`GET /api/reportes/por-ciudad`) y panel nacional en
+  Reportes. Todos los reportes y exportaciones aceptan `?id_ciudad=`; el Excel
+  suma la hoja "Por ciudad" y la columna de ciudad en el detalle, y el archivo
+  dice de qué ámbito es.
+- **Cliente:** en el paso "Lugar" elige la ciudad (queda recordada en el
+  teléfono) y después el estacionamiento, o el taller si es limpieza profunda.
+- `GET /api/public/ciudades` y `?id_ciudad=&tipo=taller` en
+  `/api/public/estacionamientos`.
+- 28 pruebas nuevas (231 en total): aislamiento entre ciudades, alcance del
+  operador, bloqueos, reportes por ciudad, usuarios internos y portal público.
+
+#### Migración
+`backend/prisma/migraciones/2026-10-12_ciudades.sql`, probada sobre una copia de
+producción (el esquema resultante coincide exactamente con `schema.prisma`):
+- Quito y Guayaquil a partir del texto de los sitios.
+- El sitio con bahías pasa a `taller`; las 3 reservas de limpieza profunda, que
+  no tenían sitio, quedan en ese taller.
+- Los lavadores quedan en la ciudad del taller (Quito); se cambian desde Lavadores.
+- Usuarios y bloqueos existentes quedan nacionales: funcionan igual que antes.
+
 ### 2026-10-08 (2) — Respaldos, Dashboard con gráficas y reportes por mes (pendiente de desplegar)
 
 Cierra el ítem **#17 (respaldos automáticos)** —el último de P3— y separa el
