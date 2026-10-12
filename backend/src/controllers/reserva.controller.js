@@ -11,6 +11,7 @@ const notificacionService = require('../services/notificacion.service');
 const cotizacionService = require('../services/cotizacion.service');
 const fechas = require('../utils/fechas');
 const alcance = require('../utils/alcance');
+const remotoService = require('../services/remoto.service');
 
 const incluir = {
   cliente: { select: { id: true, nombre: true, telefono: true, email: true } },
@@ -21,6 +22,13 @@ const incluir = {
     select: { id: true, nombre: true, direccion: true, tipo: true, id_ciudad: true, ciudad: { select: { id: true, nombre: true } } }
   },
   plaza: true,
+  ciudad: { select: { id: true, nombre: true } },
+  visita: {
+    include: {
+      sector: { select: { id: true, nombre: true } },
+      unidad: { select: { id: true, nombre: true } }
+    }
+  },
   asignaciones: { include: { lavador: { select: { id: true, nombre: true } } } },
   pagos: true,
   registro: true,
@@ -36,6 +44,100 @@ const generarCodigo = async (tx) => {
   });
   const n = ultima ? parseInt(ultima.codigo.split('-')[2]) + 1 : 1;
   return `RES-${anio}-${String(n).padStart(5, '0')}`;
+};
+
+// Fecha y hora pedidas: día válido, no pasado, y una función que no empezó
+const validarCuando = (fecha, horaInicio) => {
+  const dia = fechas.fechaDia(fecha);
+  if (!dia) throw Object.assign(new Error('Fecha inválida'), { statusCode: 400 });
+  const hoy = fechas.hoy();
+  if (dia < hoy) throw Object.assign(new Error('No se puede reservar en fechas pasadas'), { statusCode: 400 });
+  if (dia.getTime() === hoy.getTime() &&
+      agendaService.aMinutos(horaInicio) <= agendaService.aMinutos(fechas.horaActual())) {
+    throw Object.assign(new Error('Ese horario ya pasó. Elija uno más tarde.'), { statusCode: 400 });
+  }
+  return dia;
+};
+
+/**
+ * Reserva A DOMICILIO (lavado remoto). Solo servicios expreso: la limpieza
+ * profunda necesita bahía. En una transacción serializable se elige un equipo
+ * libre (traslado de ida y vuelta incluido), se crea la Visita y la reserva.
+ * El precio suma el recargo del sector; los planes de edificio no aplican.
+ */
+const crearADomicilio = async (req, res, { cliente, vehiculo, cotizacion }) => {
+  const { servicio } = cotizacion;
+  const domicilio = req.body.a_domicilio;
+  if (servicio.modalidad !== 'expreso') {
+    return res.status(400).json({ success: false, message: 'A domicilio se ofrecen los servicios expreso; la limpieza profunda es en taller' });
+  }
+  const sector = await remotoService.sectorActivo(domicilio.id_sector);
+  if (!alcance.puedeVer(req.usuario, sector.id_ciudad)) return alcance.fueraDeAlcance(res);
+  const dia = validarCuando(req.body.fecha, req.body.hora_inicio);
+
+  const reserva = await prisma.$transaction(async (tx) => {
+    const visita = await remotoService.crearVisita({
+      db: tx, dia, horaInicio: req.body.hora_inicio, duracionMin: cotizacion.duracion_min,
+      idCliente: cliente.id, domicilio
+    });
+
+    const nueva = await tx.reserva.create({
+      data: {
+        codigo: await generarCodigo(tx),
+        id_cliente: cliente.id,
+        id_vehiculo: vehiculo.id,
+        id_tipo_servicio: servicio.id,
+        id_ciudad: sector.id_ciudad,
+        id_visita: visita.id,
+        modalidad: 'remoto',
+        fecha: dia,
+        hora_inicio: visita.hora_inicio,
+        hora_fin: visita.hora_fin,
+        estado: 'solicitada',
+        observaciones: req.body.observaciones?.trim() || null,
+        precio_final: cotizacion.total + visita.recargo,
+        forma_cobro: cliente.tipo === 'empresa' ? 'credito' : 'contado',
+        adicionales: {
+          create: cotizacion.adicionales.map((a) => ({
+            id_adicional: a.id, nombre: a.nombre, precio: a.precio, duracion_min: a.duracion_min
+          }))
+        }
+      }
+    });
+
+    // La franja del trabajo, a nombre del primer lavador del equipo: así le
+    // aparece en "Mis trabajos" y la agenda del día la muestra
+    await tx.asignacionAgenda.create({
+      data: {
+        id_reserva: nueva.id,
+        id_lavador: visita.unidad.lavadores[0]?.id || null,
+        fecha: dia,
+        hora_inicio: visita.hora_inicio,
+        hora_fin: visita.hora_fin,
+        estado: 'pendiente'
+      }
+    });
+
+    const notas = [
+      `${servicio.nombre} para ${cotizacion.tipoVehiculo.nombre} a domicilio (${visita.codigo})`,
+      `sector ${visita.sector.nombre}, equipo ${visita.unidad.nombre}`,
+      visita.recargo > 0 && `recargo $${visita.recargo.toFixed(2)}`,
+      cotizacion.tarifa_empresa && 'tarifa de empresa',
+      cliente.tipo === 'empresa' && 'a crédito (corte mensual)',
+      cotizacion.adicionales.length > 0 && `adicionales: ${cotizacion.adicionales.map((a) => a.nombre).join(', ')}`
+    ].filter(Boolean);
+    await tx.historialReserva.create({
+      data: {
+        id_reserva: nueva.id, accion: 'creacion', estado_nuevo: 'solicitada',
+        motivo: notas.join(' · '), usuario: req.usuario.username
+      }
+    });
+    return nueva;
+  }, { isolationLevel: 'Serializable' });
+
+  const completa = await prisma.reserva.findUnique({ where: { id: reserva.id }, include: incluir });
+  await notificacionService.notificarCreacion(completa);
+  return res.status(201).json({ success: true, data: completa });
 };
 
 // Crear reserva + bloquear franja (TRANSACCIÓN anti doble-reserva)
@@ -86,6 +188,11 @@ const crear = async (req, res) => {
       idCliente: id_cliente
     });
     const { servicio } = cotizacion;
+
+    // A domicilio: va un equipo móvil a la dirección del cliente (otro flujo de cupos)
+    if (req.body.a_domicilio) {
+      return await crearADomicilio(req, res, { cliente, vehiculo, cotizacion });
+    }
 
     // Toda reserva es en un sitio: el estacionamiento (expreso) o el taller de
     // la ciudad (profunda). De él salen la ciudad, el horario y la capacidad.
@@ -186,6 +293,7 @@ const crear = async (req, res) => {
           id_vehiculo: vehiculo.id,
           id_tipo_servicio: servicio.id,
           id_estacionamiento: estacionamiento.id,
+          id_ciudad: estacionamiento.id_ciudad,
           id_suscripcion,
           modalidad: servicio.modalidad,
           fecha: dia,
@@ -298,7 +406,7 @@ const listar = async (req, res) => {
     const { fecha, estado, modalidad, id_estacionamiento } = req.query;
     const where = {};
     const ciudad = alcance.ciudadFiltro(req);
-    if (ciudad) where.estacionamiento = { is: { id_ciudad: ciudad } };
+    if (ciudad) where.id_ciudad = ciudad;
     if (fecha) {
       const d = fechas.fechaDia(fecha);
       if (!d) return res.status(400).json({ success: false, message: 'Fecha inválida' });
@@ -339,8 +447,12 @@ const misReservas = async (req, res) => {
 const misTrabajos = async (req, res) => {
   try {
     const { fecha } = req.query;
+    // Lo que tiene asignado, más las visitas a domicilio de su equipo móvil
     const where = {
-      asignaciones: { some: { id_lavador: req.usuario.id_lavador, estado: { not: 'cancelado' } } }
+      OR: [
+        { asignaciones: { some: { id_lavador: req.usuario.id_lavador, estado: { not: 'cancelado' } } } },
+        ...(req.usuario.id_unidad ? [{ visita: { is: { id_unidad: req.usuario.id_unidad } } }] : [])
+      ]
     };
     if (fecha) {
       const d = fechas.fechaDia(fecha);
@@ -373,7 +485,7 @@ const obtenerPorId = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Acceso denegado' });
     }
     // Un lavador solo ve las reservas que tiene asignadas
-    if (req.usuario.rol === 'lavador' && !reserva.asignaciones.some((a) => a.id_lavador === req.usuario.id_lavador)) {
+    if (req.usuario.rol === 'lavador' && !alcance.esTrabajoDelLavador(reserva, req.usuario)) {
       return res.status(403).json({ success: false, message: 'Acceso denegado' });
     }
     res.json({ success: true, data: firmarReserva(reserva) });
@@ -390,7 +502,10 @@ const cambiarEstado = async (req, res) => {
     const { motivo } = req.body;
     const nuevoEstado = req.nuevoEstado; // inyectado por la ruta
 
-    const reserva = await prisma.reserva.findUnique({ where: { id: parseInt(id) }, include: { asignaciones: true } });
+    const reserva = await prisma.reserva.findUnique({
+      where: { id: parseInt(id) },
+      include: { asignaciones: true, visita: { select: { id_unidad: true } } }
+    });
     if (!reserva) return res.status(404).json({ success: false, message: 'Reserva no encontrada' });
 
     // Un cliente solo puede operar sus propias reservas
@@ -398,7 +513,7 @@ const cambiarEstado = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Acceso denegado' });
     }
     // Un lavador solo puede operar los trabajos que tiene asignados
-    if (req.usuario.rol === 'lavador' && !reserva.asignaciones.some((a) => a.id_lavador === req.usuario.id_lavador)) {
+    if (req.usuario.rol === 'lavador' && !alcance.esTrabajoDelLavador(reserva, req.usuario)) {
       return res.status(403).json({ success: false, message: 'Acceso denegado' });
     }
 
@@ -445,6 +560,9 @@ const cambiarEstado = async (req, res) => {
       return r;
     });
 
+    // A domicilio: la visita se cierra sola cuando terminan sus reservas
+    if (reserva.id_visita) await remotoService.sincronizarVisita(reserva.id_visita);
+
     if (nuevoEstado === 'confirmada') await notificacionService.notificarConfirmacion(actualizada);
     if (nuevoEstado === 'completada') await notificacionService.notificarCompletado(actualizada);
 
@@ -464,7 +582,7 @@ const asignarLavador = async (req, res) => {
 
     const reserva = await prisma.reserva.findUnique({
       where: { id: parseInt(id) },
-      include: { asignaciones: true, estacionamiento: { select: { id_ciudad: true } } }
+      include: { asignaciones: true }
     });
     if (!reserva) return res.status(404).json({ success: false, message: 'Reserva no encontrada' });
 
@@ -478,7 +596,7 @@ const asignarLavador = async (req, res) => {
       if (!lavador || lavador.estado !== 'activo') {
         return res.status(400).json({ success: false, message: 'Lavador inválido o inactivo' });
       }
-      if (reserva.estacionamiento && lavador.id_ciudad !== reserva.estacionamiento.id_ciudad) {
+      if (lavador.id_ciudad !== reserva.id_ciudad) {
         return res.status(400).json({ success: false, message: `${lavador.nombre} trabaja en otra ciudad` });
       }
 
@@ -542,15 +660,15 @@ const subirEvidencia = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Suba al menos una foto o escriba una observación' });
     }
 
-    const reserva = await prisma.reserva.findUnique({ where: { id: parseInt(id) } });
+    const reserva = await prisma.reserva.findUnique({
+      where: { id: parseInt(id) },
+      include: { asignaciones: true, visita: { select: { id_unidad: true } } }
+    });
     if (!reserva) return res.status(404).json({ success: false, message: 'Reserva no encontrada' });
 
-    // El lavador solo puede subir evidencia de trabajos que tiene asignados
-    if (req.usuario.rol === 'lavador') {
-      const asignado = await prisma.asignacionAgenda.findFirst({
-        where: { id_reserva: reserva.id, id_lavador: req.usuario.id_lavador }
-      });
-      if (!asignado) return res.status(403).json({ success: false, message: 'No tiene este trabajo asignado' });
+    // El lavador solo puede subir evidencia de trabajos suyos (o de su equipo móvil)
+    if (req.usuario.rol === 'lavador' && !alcance.esTrabajoDelLavador(reserva, req.usuario)) {
+      return res.status(403).json({ success: false, message: 'No tiene este trabajo asignado' });
     }
 
     const campo = tipo === 'antes' ? 'fotos_antes' : 'fotos_despues';

@@ -20,6 +20,7 @@ const enviarRecordatoriosDelDia = async () => {
       cliente: { select: { nombre: true, telefono: true } },
       tipoServicio: { select: { nombre: true } },
       estacionamiento: { select: { nombre: true } },
+      visita: { select: { direccion: true } },
       historial: { where: { accion: 'recordatorio_enviado' } }
     }
   });
@@ -30,7 +31,9 @@ const enviarRecordatoriosDelDia = async () => {
 
     const body = `Hola ${reserva.cliente.nombre}, te recordamos tu lavado (${reserva.tipoServicio?.nombre}) ` +
       `mañana ${fechas.formatoCorto(reserva.fecha)} a las ${reserva.hora_inicio}` +
-      `${reserva.estacionamiento ? ` en ${reserva.estacionamiento.nombre}` : ''}. Código: ${reserva.codigo}.`;
+      `${reserva.estacionamiento ? ` en ${reserva.estacionamiento.nombre}` : ''}` +
+      `${reserva.visita ? ` a domicilio (${reserva.visita.direccion}); ten lista la toma de agua y de luz` : ''}` +
+      `. Código: ${reserva.codigo}.`;
 
     await enviarRecordatorio({ to: reserva.cliente.telefono, body });
     await prisma.historialReserva.create({

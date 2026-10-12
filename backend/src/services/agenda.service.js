@@ -58,7 +58,8 @@ const obtenerCapacidad = async (modalidad, estacionamiento = null, db = prisma, 
     return estacionamiento.capacidad_expreso;
   }
   const ciudad = estacionamiento?.id_ciudad || idCiudad;
-  return db.lavador.count({ where: { estado: 'activo', ...(ciudad && { id_ciudad: ciudad }) } });
+  // Los lavadores de un equipo móvil trabajan a domicilio: no suman al expreso
+  return db.lavador.count({ where: { estado: 'activo', id_unidad: null, ...(ciudad && { id_ciudad: ciudad }) } });
 };
 
 // ¿Un bloqueo manual afecta a este sitio? Nacional (sin ciudad ni sitio), de la

@@ -369,7 +369,7 @@ const pendientes = async (req, res) => {
     const pagos = await prisma.pago.findMany({
       where: {
         estado: 'en_verificacion',
-        ...(ciudad && { reserva: { is: { estacionamiento: { is: { id_ciudad: ciudad } } } } })
+        ...(ciudad && { reserva: { is: { id_ciudad: ciudad } } })
       },
       include: {
         reserva: {

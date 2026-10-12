@@ -31,7 +31,7 @@ const authenticate = async (req, res, next) => {
   try {
     const usuario = await prisma.usuario.findUnique({
       where: { id: decoded.id },
-      include: { cliente: { select: { estado: true } }, lavador: { select: { estado: true, id_ciudad: true } } }
+      include: { cliente: { select: { estado: true } }, lavador: { select: { estado: true, id_ciudad: true, id_unidad: true } } }
     });
 
     if (!usuario || usuario.estado !== 'activo') {
@@ -45,7 +45,12 @@ const authenticate = async (req, res, next) => {
     }
 
     // La ciudad sale de la base y no del token: ver utils/alcance.js
-    req.usuario = { ...decoded, id_ciudad: usuario.lavador?.id_ciudad ?? usuario.id_ciudad ?? null };
+    req.usuario = {
+      ...decoded,
+      id_ciudad: usuario.lavador?.id_ciudad ?? usuario.id_ciudad ?? null,
+      // Equipo móvil del lavador: ve y opera las visitas a domicilio de su equipo
+      id_unidad: usuario.lavador?.id_unidad ?? null
+    };
     next();
   } catch (error) {
     console.error('Error validando la sesión:', error);

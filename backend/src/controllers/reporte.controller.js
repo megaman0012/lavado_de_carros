@@ -25,8 +25,8 @@ const rangoQuery = (req) => ({
 
 // Ciudad del reporte: la del operador de ciudad, o la elegida en el filtro
 // (?id_ciudad=) por quien tiene alcance nacional; null = todo el país.
-// Las reservas son de una ciudad por su sitio (ver utils/alcance.js).
-const deCiudad = (ciudad) => (ciudad ? { estacionamiento: { is: { id_ciudad: ciudad } } } : {});
+// Cada reserva guarda su ciudad (la de su sitio, o la del sector si es a domicilio).
+const deCiudad = (ciudad) => (ciudad ? { id_ciudad: ciudad } : {});
 const reservaDeCiudad = (ciudad) => (ciudad ? { reserva: { is: deCiudad(ciudad) } } : {});
 
 // `hasta` es un día (medianoche) y las reservas guardan solo el día, pero un pago
@@ -103,13 +103,23 @@ const calcularKPIs = async (ciudad = null) => {
  *   - cobrado:   los pagos aprobados con fecha de pago dentro del período
  * Un lavado de fin de mes cobrado al mes siguiente cae en meses distintos, y
  * esa diferencia es justamente lo que hay que poder ver.
+ *
+ * Una visita a domicilio FALLIDA no es un lavado, pero su cargo se cobra: suma
+ * a lo facturado y no a los lavados ni al ticket promedio.
  */
+const NO_LAVADO = ['cancelada', 'no_asistio', 'fallida'];
+
 const calcularResumenPeriodo = async (desde, hasta, ciudad = null) => {
   const enRango = { fecha: { gte: desde, lte: hasta }, ...deCiudad(ciudad) };
 
-  const [hechas, canceladas, noAsistio, cobrado, calificaciones] = await Promise.all([
+  const [hechas, fallidas, canceladas, noAsistio, cobrado, calificaciones] = await Promise.all([
     prisma.reserva.aggregate({
-      where: { ...enRango, estado: { notIn: ['cancelada', 'no_asistio'] } },
+      where: { ...enRango, estado: { notIn: NO_LAVADO } },
+      _count: true,
+      _sum: { precio_final: true }
+    }),
+    prisma.reserva.aggregate({
+      where: { ...enRango, estado: 'fallida' },
       _count: true,
       _sum: { precio_final: true }
     }),
@@ -127,19 +137,22 @@ const calcularResumenPeriodo = async (desde, hasta, ciudad = null) => {
   ]);
 
   const lavados = hechas._count || 0;
-  const facturado = hechas._sum.precio_final || 0;
+  const facturadoLavados = hechas._sum.precio_final || 0;
+  const cargosFallidas = fallidas._sum.precio_final || 0;
 
   return {
     desde: fechas.aISO(desde),
     hasta: fechas.aISO(hasta),
     lavados,
-    facturado,
+    facturado: facturadoLavados + cargosFallidas,
     cobrado: cobrado._sum.monto || 0,
     // Sin lavados el promedio no es 0, es "no aplica": dividir por cero daría NaN
     // y mostrar "$0.00" haría pensar que se trabajó gratis.
-    ticket_promedio: lavados > 0 ? Math.round((facturado / lavados) * 100) / 100 : null,
+    ticket_promedio: lavados > 0 ? Math.round((facturadoLavados / lavados) * 100) / 100 : null,
     canceladas,
     no_asistio: noAsistio,
+    visitas_fallidas: fallidas._count || 0,
+    cargos_visitas_fallidas: cargosFallidas,
     calificacion_promedio: calificaciones._avg.puntuacion
       ? Math.round(calificaciones._avg.puntuacion * 10) / 10
       : null,
@@ -201,23 +214,26 @@ const calcularPorCiudad = async (desde, hasta, ciudad = null) => {
   const [ciudades, reservas, pagos] = await Promise.all([
     prisma.ciudad.findMany({ where: ciudad ? { id: ciudad } : { activa: true }, orderBy: { nombre: 'asc' } }),
     prisma.reserva.findMany({
-      where: { fecha: { gte: desde, lte: hasta }, id_estacionamiento: { not: null }, ...deCiudad(ciudad) },
+      where: { fecha: { gte: desde, lte: hasta }, ...deCiudad(ciudad) },
       select: {
         estado: true, precio_final: true,
-        estacionamiento: { select: { id_ciudad: true } },
+        id_ciudad: true,
         calificacion: { select: { puntuacion: true } }
       }
     }),
     prisma.pago.findMany({
       where: { estado: 'aprobado', fecha_pago: { gte: desde, lt: finDelDia(hasta) }, ...reservaDeCiudad(ciudad) },
-      select: { monto: true, reserva: { select: { estacionamiento: { select: { id_ciudad: true } } } } }
+      select: { monto: true, reserva: { select: { id_ciudad: true } } }
     })
   ]);
 
   return ciudades.map((c) => {
-    const suyas = reservas.filter((r) => r.estacionamiento?.id_ciudad === c.id);
-    const hechas = suyas.filter((r) => !['cancelada', 'no_asistio'].includes(r.estado));
-    const facturado = hechas.reduce((t, r) => t + (r.precio_final || 0), 0);
+    const suyas = reservas.filter((r) => r.id_ciudad === c.id);
+    const hechas = suyas.filter((r) => !NO_LAVADO.includes(r.estado));
+    const facturadoLavados = hechas.reduce((t, r) => t + (r.precio_final || 0), 0);
+    const facturado = facturadoLavados + suyas
+      .filter((r) => r.estado === 'fallida')
+      .reduce((t, r) => t + (r.precio_final || 0), 0);
     const notas = suyas.filter((r) => r.calificacion).map((r) => r.calificacion.puntuacion);
     return {
       id_ciudad: c.id,
@@ -225,9 +241,9 @@ const calcularPorCiudad = async (desde, hasta, ciudad = null) => {
       lavados: hechas.length,
       facturado,
       cobrado: pagos
-        .filter((p) => p.reserva?.estacionamiento?.id_ciudad === c.id)
+        .filter((p) => p.reserva?.id_ciudad === c.id)
         .reduce((t, p) => t + p.monto, 0),
-      ticket_promedio: hechas.length > 0 ? Math.round((facturado / hechas.length) * 100) / 100 : null,
+      ticket_promedio: hechas.length > 0 ? Math.round((facturadoLavados / hechas.length) * 100) / 100 : null,
       canceladas: suyas.filter((r) => r.estado === 'cancelada').length,
       no_asistio: suyas.filter((r) => r.estado === 'no_asistio').length,
       calificacion_promedio: notas.length > 0
@@ -326,6 +342,8 @@ const calcularDetalle = async (desde, hasta, ciudad = null) => {
       vehiculo: { select: { placa: true, marca: true, modelo: true } },
       tipoServicio: { select: { nombre: true, modalidad: true } },
       estacionamiento: { select: { nombre: true, ciudad: { select: { nombre: true } } } },
+      ciudad: { select: { nombre: true } },
+      visita: { select: { codigo: true, direccion: true, sector: { select: { nombre: true } } } },
       asignaciones: { include: { lavador: { select: { nombre: true } } } },
       registro: true,
       pagos: true,
@@ -350,8 +368,8 @@ const calcularDetalle = async (desde, hasta, ciudad = null) => {
       vehiculo: [r.vehiculo?.placa, r.vehiculo?.marca, r.vehiculo?.modelo].filter(Boolean).join(' '),
       servicio: r.tipoServicio?.nombre || '',
       modalidad: r.tipoServicio?.modalidad || '',
-      ciudad: r.estacionamiento?.ciudad?.nombre || '',
-      sitio: r.estacionamiento?.nombre || 'Bahía de lavado',
+      ciudad: r.ciudad?.nombre || '',
+      sitio: r.estacionamiento?.nombre || (r.visita ? `A domicilio · ${r.visita.sector.nombre} · ${r.visita.direccion}` : ''),
       lavador: r.asignaciones.map((a) => a.lavador?.nombre).filter(Boolean).join(', ') || 'Sin asignar',
       precio: r.precio_final ?? 0,
       cobro: r.forma_cobro === 'credito' ? 'Crédito (corte)' : 'Contado',
@@ -643,7 +661,8 @@ const actaServicio = async (req, res) => {
         registro: true,
         pagos: true,
         calificacion: true,
-        adicionales: true
+        adicionales: true,
+        visita: { include: { sector: { select: { nombre: true } } } }
       }
     });
     if (!reserva) return res.status(404).json({ success: false, message: 'Reserva no encontrada' });
@@ -652,7 +671,7 @@ const actaServicio = async (req, res) => {
     if (req.usuario.rol === 'cliente' && reserva.id_cliente !== req.usuario.id_cliente) {
       return res.status(403).json({ success: false, message: 'Acceso denegado' });
     }
-    if (req.usuario.rol === 'lavador' && !reserva.asignaciones.some((a) => a.id_lavador === req.usuario.id_lavador)) {
+    if (req.usuario.rol === 'lavador' && !alcance.esTrabajoDelLavador(reserva, req.usuario)) {
       return res.status(403).json({ success: false, message: 'Acceso denegado' });
     }
 
@@ -693,7 +712,8 @@ const actaServicio = async (req, res) => {
     if (reserva.adicionales.length > 0) {
       campo('Adicionales', reserva.adicionales.map((a) => `${a.nombre} ($${a.precio.toFixed(2)})`).join(', '));
     }
-    campo('Lugar', reserva.estacionamiento?.nombre || 'Bahía de lavado profundo');
+    campo('Lugar', reserva.estacionamiento?.nombre ||
+      (reserva.visita ? `A domicilio (${reserva.visita.sector?.nombre}): ${reserva.visita.direccion}` : 'Bahía de lavado profundo'));
     campo('Fecha', `${fechas.formatoCorto(reserva.fecha)}  ${reserva.hora_inicio} - ${reserva.hora_fin}`);
     campo('Lavador', reserva.asignaciones.map((a) => a.lavador?.nombre).filter(Boolean).join(', ') || 'Sin asignar');
     campo('Estado', reserva.estado);

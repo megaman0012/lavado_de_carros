@@ -195,6 +195,8 @@ export interface AsignacionAgenda {
     vehiculo?: { placa: string; marca?: string; modelo?: string; color?: string };
     tipoServicio?: { nombre: string };
     estacionamiento?: { nombre: string; ciudad?: { nombre: string } } | null;
+    visita?: { id: number; codigo: string; estado: string; direccion: string; hora_salida: string; hora_regreso: string;
+      sector?: { nombre: string }; unidad?: { nombre: string } } | null;
   } | null;
 }
 
@@ -235,7 +237,8 @@ export interface RegistroLavado {
   fecha_fin?: string | null;
 }
 
-export type EstadoReserva = 'solicitada' | 'confirmada' | 'en_proceso' | 'completada' | 'cancelada' | 'no_asistio';
+// fallida = lavado a domicilio que no se pudo hacer: se cobra el cargo de visita
+export type EstadoReserva = 'solicitada' | 'confirmada' | 'en_proceso' | 'completada' | 'cancelada' | 'no_asistio' | 'fallida';
 
 export interface Reserva {
   id: number;
@@ -244,7 +247,12 @@ export interface Reserva {
   id_vehiculo: number;
   id_tipo_servicio: number;
   id_estacionamiento?: number | null;
-  modalidad: 'expreso' | 'profunda';
+  // remoto = a domicilio (tiene `visita` y no estacionamiento)
+  modalidad: 'expreso' | 'profunda' | 'remoto';
+  id_ciudad?: number;
+  ciudad?: { id: number; nombre: string };
+  id_visita?: number | null;
+  visita?: Visita | null;
   fecha: string;
   hora_inicio: string;
   hora_fin: string;
@@ -293,6 +301,9 @@ export interface ResumenPeriodo {
   ticket_promedio: number | null;
   canceladas: number;
   no_asistio: number;
+  // A domicilio: visitas que no se pudieron hacer y lo que se cobró por ellas
+  visitas_fallidas?: number;
+  cargos_visitas_fallidas?: number;
   calificacion_promedio: number | null;
   calificaciones_total: number;
 }
@@ -396,3 +407,79 @@ export interface EmpresaResumen extends Cliente {
   ultimo_corte: Pick<CorteEmpresa, 'codigo' | 'periodo' | 'estado' | 'total'> | null;
   pendiente: { cantidad: number; total: number };
 }
+
+// ==================== LAVADO REMOTO ====================
+
+export interface Sector {
+  id: number;
+  id_ciudad: number;
+  nombre: string;
+  traslado_min: number;
+  recargo: number;
+  activo?: boolean;
+  ciudad?: { id: number; nombre: string };
+}
+
+export interface UnidadMovil {
+  id: number;
+  nombre: string;
+  id_ciudad: number;
+  capacidad: number;
+  horario_inicio: string;
+  horario_fin: string;
+  lleva_agua: boolean;
+  lleva_energia: boolean;
+  estado: 'activo' | 'mantenimiento' | 'inactivo';
+  ciudad?: { id: number; nombre: string };
+  lavadores?: { id: number; nombre: string; estado: string }[];
+}
+
+export type EstadoVisita = 'programada' | 'en_camino' | 'en_sitio' | 'completada' | 'fallida' | 'cancelada';
+
+export interface Visita {
+  id: number;
+  codigo: string;
+  id_unidad: number;
+  id_sector: number;
+  direccion: string;
+  referencia?: string | null;
+  latitud?: number | null;
+  longitud?: number | null;
+  contacto_nombre?: string | null;
+  contacto_telefono?: string | null;
+  tiene_agua: boolean;
+  tiene_luz: boolean;
+  fecha: string;
+  hora_salida: string;
+  hora_inicio: string;
+  hora_fin: string;
+  hora_regreso: string;
+  traslado_min: number;
+  recargo: number;
+  estado: EstadoVisita;
+  motivo_falla?: string | null;
+  llegada_en?: string | null;
+  llegada_latitud?: number | null;
+  llegada_longitud?: number | null;
+  sector?: { id: number; nombre: string; ciudad?: { nombre: string } };
+  unidad?: { id: number; nombre: string };
+  cliente?: { id: number; nombre: string; telefono?: string | null };
+  reservas?: { id: number; codigo: string; estado: EstadoReserva; precio_final?: number | null; forma_cobro?: string;
+    vehiculo?: { placa: string; marca?: string; modelo?: string }; tipoServicio?: { nombre: string } }[];
+  // Solo al marcar la llegada: metros entre la marca GPS y la dirección
+  distancia_m?: number | null;
+}
+
+// Datos de la dirección al pedir un lavado a domicilio
+export interface DatosDomicilio {
+  id_sector: number | '';
+  direccion: string;
+  referencia: string;
+  contacto_nombre: string;
+  contacto_telefono: string;
+  tiene_agua: boolean;
+  tiene_luz: boolean;
+  latitud?: number | null;
+  longitud?: number | null;
+}
+

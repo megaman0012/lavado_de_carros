@@ -36,6 +36,7 @@ d('Reportes por período', () => {
         id_vehiculo: datos.vehiculos.autoDeAna.id,
         id_tipo_servicio: idServicio || datos.servicios.expreso.id,
         id_estacionamiento: idSitio || datos.sitio.id,
+        id_ciudad: datos.ciudades.guayaquil.id, // los sitios del sembrado son de Guayaquil
         modalidad: 'expreso',
         fecha: dia(fecha),
         hora_inicio: '09:00',

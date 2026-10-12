@@ -18,6 +18,7 @@ const detalleReserva = (reserva) => `
   <p><strong>${reserva.tipoServicio?.nombre || 'Servicio'}</strong><br>
   ${fechas.formatoCorto(reserva.fecha)} · ${reserva.hora_inicio}–${reserva.hora_fin}
   ${reserva.estacionamiento ? `<br>${reserva.estacionamiento.nombre}` : ''}
+  ${reserva.visita ? `<br>A domicilio: ${reserva.visita.direccion}` : ''}
   ${reserva.adicionales?.length ? `<br>Adicionales: ${reserva.adicionales.map((a) => a.nombre).join(', ')}` : ''}
   ${reserva.precio_final != null ? `<br>Total: $${reserva.precio_final.toFixed(2)}` : ''}</p>
   <p>Código: <strong>${reserva.codigo}</strong></p>

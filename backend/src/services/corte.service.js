@@ -7,7 +7,8 @@
  * exporta, y se registra el número de factura y el pago.
  *
  * Qué entra en un corte del período P (por ejemplo "2026-10"):
- *   - lavados COMPLETADOS a crédito de la empresa,
+ *   - lavados COMPLETADOS a crédito de la empresa, y visitas a domicilio
+ *     FALLIDAS (se cobra el cargo de visita),
  *   - con fecha hasta el último día de P,
  *   - que todavía no estén en otro corte.
  * O sea que un lavado de septiembre que se completó tarde, o que quedó afuera
@@ -35,6 +36,8 @@ const incluirDetalle = {
   vehiculo: { select: { placa: true, marca: true, modelo: true, tipoVehiculo: { select: { nombre: true } } } },
   tipoServicio: { select: { nombre: true, modalidad: true } },
   estacionamiento: { select: { nombre: true, ciudad: { select: { nombre: true } } } },
+  ciudad: { select: { nombre: true } },
+  visita: { select: { direccion: true, recargo: true, sector: { select: { nombre: true } } } },
   adicionales: { select: { nombre: true, precio: true } }
 };
 
@@ -49,8 +52,10 @@ const fila = (r) => ({
   tipo_vehiculo: r.vehiculo?.tipoVehiculo?.nombre || '',
   servicio: r.tipoServicio?.nombre || '',
   adicionales: (r.adicionales || []).map((a) => a.nombre).join(', '),
-  sitio: r.estacionamiento?.nombre || '',
-  ciudad: r.estacionamiento?.ciudad?.nombre || '',
+  sitio: r.estacionamiento?.nombre || (r.visita ? `A domicilio · ${r.visita.sector.nombre}` : ''),
+  ciudad: r.ciudad?.nombre || '',
+  // El cargo de una visita fallida va con su nota; un lavado a domicilio, con su recargo
+  nota: r.estado === 'fallida' ? 'Visita fallida (cargo)' : r.visita?.recargo ? `incluye recargo $${r.visita.recargo.toFixed(2)}` : '',
   total: r.precio_final || 0
 });
 
@@ -72,7 +77,7 @@ const pendientes = (idCliente, hasta, db = prisma) =>
       id_cliente: idCliente,
       forma_cobro: 'credito',
       id_corte: null,
-      estado: 'completada',
+      estado: { in: ['completada', 'fallida'] },
       fecha: { lte: hasta }
     },
     include: incluirDetalle,

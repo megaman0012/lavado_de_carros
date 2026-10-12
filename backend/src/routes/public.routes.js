@@ -10,6 +10,8 @@ router.get('/servicios', publicController.servicios);
 router.get('/tipos-vehiculo', publicController.tiposVehiculo);
 router.get('/adicionales', publicController.adicionales);
 router.get('/ciudades', publicController.ciudades);
+// Sectores con lavado a domicilio (hay equipo móvil activo en la ciudad)
+router.get('/sectores', require('../controllers/remoto.controller').sectoresPublicos);
 router.get('/estacionamientos', publicController.estacionamientos);
 
 module.exports = router;

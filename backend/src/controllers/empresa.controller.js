@@ -41,7 +41,7 @@ const listar = async (req, res) => {
     });
     const pendientes = await prisma.reserva.groupBy({
       by: ['id_cliente'],
-      where: { forma_cobro: 'credito', id_corte: null, estado: 'completada' },
+      where: { forma_cobro: 'credito', id_corte: null, estado: { in: ['completada', 'fallida'] } },
       _count: true,
       _sum: { precio_final: true }
     });
@@ -253,7 +253,7 @@ const escribirExcel = async (res, corte) => {
   const columnas = [
     ['Código', 'codigo', 16], ['Fecha', 'fecha', 12], ['Hora', 'hora', 8], ['Placa', 'placa', 12],
     ['Vehículo', 'vehiculo', 20], ['Tipo', 'tipo_vehiculo', 12], ['Servicio', 'servicio', 24],
-    ['Adicionales', 'adicionales', 26], ['Sitio', 'sitio', 24], ['Ciudad', 'ciudad', 14], ['Total ($)', 'total', 12]
+    ['Adicionales', 'adicionales', 26], ['Sitio', 'sitio', 24], ['Ciudad', 'ciudad', 14], ['Nota', 'nota', 24], ['Total ($)', 'total', 12]
   ];
   const filaTitulos = hoja.addRow(columnas.map((c) => c[0]));
   filaTitulos.eachCell((c) => Object.assign(c, encabezado));
@@ -325,7 +325,7 @@ const miResumen = async (req, res) => {
         include: { vehiculo: { select: { id: true, placa: true, marca: true, modelo: true } } }
       }),
       prisma.reserva.aggregate({
-        where: { id_cliente: req.empresa.id, forma_cobro: 'credito', id_corte: null, estado: 'completada' },
+        where: { id_cliente: req.empresa.id, forma_cobro: 'credito', id_corte: null, estado: { in: ['completada', 'fallida'] } },
         _count: true,
         _sum: { precio_final: true }
       })

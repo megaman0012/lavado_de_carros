@@ -22,6 +22,7 @@ import Ciudades from './pages/Ciudades';
 import Usuarios from './pages/Usuarios';
 import Empresas from './pages/Empresas';
 import MiFlota from './pages/MiFlota';
+import Remoto from './pages/Remoto';
 
 const App: React.FC = () => {
   return (
@@ -107,6 +108,11 @@ const App: React.FC = () => {
           <Route path="/empresas" element={
             <ProtectedRoute roles={['admin', 'operador']}>
               <Layout><Empresas /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/remoto" element={
+            <ProtectedRoute roles={['admin', 'operador']}>
+              <Layout><Remoto /></Layout>
             </ProtectedRoute>
           } />
           <Route path="/mi-flota" element={

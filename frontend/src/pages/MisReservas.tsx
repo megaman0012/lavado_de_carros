@@ -12,7 +12,8 @@ const coloresEstado: Record<string, string> = {
   en_proceso: 'bg-indigo-100 text-indigo-700',
   completada: 'bg-green-100 text-green-700',
   cancelada: 'bg-red-100 text-red-600',
-  no_asistio: 'bg-slate-200 text-slate-600'
+  no_asistio: 'bg-slate-200 text-slate-600',
+  fallida: 'bg-orange-100 text-orange-700'
 };
 
 const etiquetasAccion: Record<string, string> = {
@@ -22,6 +23,7 @@ const etiquetasAccion: Record<string, string> = {
   completar: 'Lavado completado',
   cancelar: 'Cancelada',
   no_asistio: 'Marcada como no asistió',
+  visita_fallida: 'Visita a domicilio fallida',
   asignar_lavador: 'Lavador asignado',
   quitar_lavador: 'Lavador desasignado',
   registrar_pago: 'Pago registrado',
@@ -408,6 +410,17 @@ const MisReservas: React.FC = () => {
                 📅 {fechaCorta(r.fecha)} · {r.hora_inicio}–{r.hora_fin}
               </p>
               {r.estacionamiento && <p className="text-sm text-slate-500">📍 {r.estacionamiento.nombre}</p>}
+              {r.visita && (
+                <p className="text-sm text-slate-500">
+                  🏠 A domicilio · {r.visita.direccion}
+                  {r.visita.estado === 'en_camino' && <span className="block text-emerald-700 font-medium">Nuestro equipo va en camino.</span>}
+                </p>
+              )}
+              {r.estado === 'fallida' && (
+                <p className="mt-2 text-xs bg-orange-50 text-orange-700 border border-orange-200 rounded-lg px-3 py-2">
+                  No pudimos lavar en la visita{r.visita?.motivo_falla ? `: ${r.visita.motivo_falla}` : ''}. Se cobra el cargo de visita.
+                </p>
+              )}
               {(() => {
                 const { enRevision, rechazado, saldo } = estadoPago(r);
                 if (['cancelada', 'no_asistio'].includes(r.estado)) return null;

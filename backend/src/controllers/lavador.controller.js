@@ -261,11 +261,11 @@ const asignarLavador = async (req, res) => {
     const { id_lavador } = req.body;
     const actual = await prisma.asignacionAgenda.findUnique({
       where: { id: parseInt(req.params.asignacionId) },
-      include: { reserva: { select: { estacionamiento: { select: { id_ciudad: true } } } } }
+      include: { reserva: { select: { id_ciudad: true } } }
     });
     if (!actual) return res.status(404).json({ success: false, message: 'Franja no encontrada' });
     // La ciudad de la franja: la del sitio de la reserva o la del bloqueo
-    const ciudadFranja = actual.reserva?.estacionamiento?.id_ciudad ?? actual.id_ciudad;
+    const ciudadFranja = actual.reserva?.id_ciudad ?? actual.id_ciudad;
     if (!alcance.puedeVer(req.usuario, ciudadFranja)) return alcance.fueraDeAlcance(res);
     if (id_lavador) {
       const lavador = await prisma.lavador.findUnique({ where: { id: parseInt(id_lavador) } });

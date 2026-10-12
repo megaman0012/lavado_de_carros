@@ -57,4 +57,13 @@ const requireNacional = (req, res, next) => {
   next();
 };
 
-module.exports = { aEntero, ciudadFija, esNacional, ciudadFiltro, puedeVer, fueraDeAlcance, requireNacional };
+/**
+ * ¿Es un trabajo de este lavador? Lo tiene asignado en la agenda, o es una
+ * visita a domicilio de su equipo móvil (todo el equipo va a la visita).
+ * La reserva tiene que venir con `asignaciones` y `visita` (al menos id_unidad).
+ */
+const esTrabajoDelLavador = (reserva, usuario) =>
+  (reserva.asignaciones || []).some((a) => a.id_lavador === usuario.id_lavador) ||
+  (!!usuario.id_unidad && reserva.visita?.id_unidad === usuario.id_unidad);
+
+module.exports = { esTrabajoDelLavador, aEntero, ciudadFija, esNacional, ciudadFiltro, puedeVer, fueraDeAlcance, requireNacional };

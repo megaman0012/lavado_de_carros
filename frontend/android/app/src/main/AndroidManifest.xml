@@ -33,4 +33,9 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Lavado a domicilio: el lavador marca "Llegué" con el GPS y el cliente puede
+         compartir su ubicación. En el navegador eso exige HTTPS; en la APK, estos
+         permisos (el WebView de Capacitor pide el permiso al usarlo). -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 </manifest>

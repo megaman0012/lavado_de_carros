@@ -85,7 +85,10 @@ const Reportes: React.FC = () => {
     { titulo: 'Ticket promedio', valor: resumen.ticket_promedio != null ? moneda(resumen.ticket_promedio) : '—', icono: <TrendingUp className="text-purple-600" />, fondo: 'bg-purple-50' },
     {
       titulo: 'Cancelados', valor: resumen.canceladas,
-      nota: resumen.no_asistio > 0 ? `${resumen.no_asistio} no se presentaron` : undefined,
+      nota: [
+        resumen.no_asistio > 0 && `${resumen.no_asistio} no se presentaron`,
+        (resumen.visitas_fallidas ?? 0) > 0 && `${resumen.visitas_fallidas} visitas a domicilio fallidas (${moneda(resumen.cargos_visitas_fallidas ?? 0)} cobrados en el facturado)`
+      ].filter(Boolean).join(' · ') || undefined,
       icono: <XCircle className="text-rose-500" />, fondo: 'bg-rose-50'
     },
     {

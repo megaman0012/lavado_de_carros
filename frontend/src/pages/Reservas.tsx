@@ -15,7 +15,8 @@ const coloresEstado: Record<string, string> = {
   en_proceso: 'bg-indigo-100 text-indigo-700',
   completada: 'bg-green-100 text-green-700',
   cancelada: 'bg-red-100 text-red-600',
-  no_asistio: 'bg-slate-200 text-slate-600'
+  no_asistio: 'bg-slate-200 text-slate-600',
+  fallida: 'bg-orange-100 text-orange-700'
 };
 
 
@@ -526,6 +527,11 @@ const Reservas: React.FC = () => {
                       )}
                       {r.forma_cobro === 'credito' && (
                         <span className="block text-xs text-indigo-600">a crédito · {r.id_corte ? 'en corte' : 'sin cortar'}</span>
+                      )}
+                      {r.visita && (
+                        <span className="block text-xs text-emerald-700">
+                          🏠 a domicilio · {r.visita.sector?.nombre} · {r.visita.direccion}
+                        </span>
                       )}
                       {r.estacionamiento && (
                         <span className="block text-xs text-slate-400">

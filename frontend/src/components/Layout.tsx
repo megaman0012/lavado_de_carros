@@ -31,6 +31,7 @@ const menuItems: MenuItem[] = [
   { to: '/mis-trabajos', label: 'Mis Trabajos', icon: <Wrench size={20} />, roles: ['lavador'] },
   { to: '/clientes', label: 'Clientes', icon: <Users size={20} />, roles: ['admin', 'operador'] },
   { to: '/estacionamientos', label: 'Estacionamientos', icon: <MapPin size={20} />, roles: ['admin', 'operador'] },
+  { to: '/remoto', label: 'Lavado remoto', icon: <Truck size={20} />, roles: ['admin', 'operador'] },
   { to: '/servicios', label: 'Servicios', icon: <Droplets size={20} />, roles: ['admin', 'operador'] },
   { to: '/lavadores', label: 'Lavadores', icon: <Wrench size={20} />, roles: ['admin', 'operador'] },
   { to: '/pagos-por-verificar', label: 'Pagos por verificar', icon: <BadgeCheck size={20} />, roles: ['admin', 'operador'], contador: 'pagosPendientes' },

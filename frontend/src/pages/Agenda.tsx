@@ -136,6 +136,7 @@ const Agenda: React.FC = () => {
                     <p className="text-sm text-slate-500">
                       {a.reserva.tipoServicio?.nombre} · {a.reserva.vehiculo?.placa} · {a.reserva.cliente?.nombre}
                       {a.reserva.estacionamiento && ` · 📍 ${a.reserva.estacionamiento.nombre}`}
+                      {a.reserva.visita && ` · 🏠 ${a.reserva.visita.direccion} (sale ${a.reserva.visita.hora_salida}, ${a.reserva.visita.unidad?.nombre})`}
                       {!idCiudad && a.reserva.estacionamiento?.ciudad && ` (${a.reserva.estacionamiento.ciudad.nombre})`}
                     </p>
                   ) : (

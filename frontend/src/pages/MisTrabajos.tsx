@@ -4,6 +4,7 @@ import api from '../services/api';
 import { Reserva } from '../types';
 import { hoyISO, fechaCorta } from '../utils/fechas';
 import { urlArchivo } from '../services/config';
+import AccionesVisita from '../components/AccionesVisita';
 
 const coloresEstado: Record<string, string> = {
   solicitada: 'bg-amber-100 text-amber-700',
@@ -11,7 +12,8 @@ const coloresEstado: Record<string, string> = {
   en_proceso: 'bg-indigo-100 text-indigo-700',
   completada: 'bg-green-100 text-green-700',
   cancelada: 'bg-red-100 text-red-600',
-  no_asistio: 'bg-slate-200 text-slate-600'
+  no_asistio: 'bg-slate-200 text-slate-600',
+  fallida: 'bg-orange-100 text-orange-700'
 };
 
 
@@ -206,8 +208,8 @@ const MisTrabajos: React.FC = () => {
               </div>
               <p className="font-semibold text-slate-800">
                 {r.tipoServicio?.nombre}
-                <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${r.modalidad === 'profunda' ? 'bg-purple-100 text-purple-600' : 'bg-sky-100 text-sky-600'}`}>
-                  {r.modalidad}
+                <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${r.modalidad === 'profunda' ? 'bg-purple-100 text-purple-600' : r.modalidad === 'remoto' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-600'}`}>
+                  {r.modalidad === 'remoto' ? 'a domicilio' : r.modalidad}
                 </span>
               </p>
               {(r.adicionales?.length ?? 0) > 0 && (
@@ -220,6 +222,27 @@ const MisTrabajos: React.FC = () => {
                 📅 {fechaCorta(r.fecha)} · {r.hora_inicio}–{r.hora_fin}
               </p>
               {r.estacionamiento && <p className="text-sm text-slate-500">📍 {r.estacionamiento.nombre}</p>}
+              {r.visita && (
+                <div className="mt-2 text-sm bg-emerald-50 border border-emerald-100 rounded-lg p-3 space-y-1">
+                  <p className="font-medium text-slate-800">🏠 {r.visita.direccion}</p>
+                  {r.visita.referencia && <p className="text-slate-500">{r.visita.referencia}</p>}
+                  <p className="text-slate-500">
+                    {r.visita.sector?.nombre} · salir {r.visita.hora_salida} · {r.visita.unidad?.nombre}
+                  </p>
+                  {r.visita.contacto_telefono && (
+                    <p>
+                      <a href={`tel:${r.visita.contacto_telefono}`} className="text-sky-700 underline">
+                        📞 {r.visita.contacto_nombre || 'Contacto'} · {r.visita.contacto_telefono}
+                      </a>
+                    </p>
+                  )}
+                  <p className="text-xs text-slate-500">
+                    Visita {r.visita.codigo} · <b>{r.visita.estado.replace('_', ' ')}</b>
+                    {!r.visita.tiene_agua && ' · llevar agua'}{!r.visita.tiene_luz && ' · llevar energía'}
+                  </p>
+                  <AccionesVisita visita={r.visita} onDone={cargar} />
+                </div>
+              )}
               {r.cliente && <p className="text-sm text-slate-500">👤 {r.cliente.nombre}{r.cliente.telefono ? ` · ${r.cliente.telefono}` : ''}</p>}
 
               <div className="flex items-center justify-between mt-4 pt-3 border-t">

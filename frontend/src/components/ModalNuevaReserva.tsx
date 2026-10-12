@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { X, Search, Car, CalendarPlus, CheckCircle2, UserPlus } from 'lucide-react';
 import api from '../services/api';
 import { useFiltroCiudad } from './FiltroCiudad';
-import { Cliente, Vehiculo, TipoServicio, Estacionamiento, FranjaDisponibilidad, ServicioAdicional } from '../types';
+import FormDomicilio, { DOMICILIO_VACIO, domicilioCompleto } from './FormDomicilio';
+import { Cliente, Vehiculo, TipoServicio, Estacionamiento, FranjaDisponibilidad, ServicioAdicional, Sector, DatosDomicilio } from '../types';
 import FormVehiculo, { SelectorTipoVehiculo, useTiposVehiculo } from './FormVehiculo';
 import { hoyISO, fechaCorta } from '../utils/fechas';
 import { tarifaPara, dinero, totales } from '../utils/catalogo';
@@ -59,6 +60,18 @@ const ModalNuevaReserva: React.FC<{ onClose: () => void; onCreada: () => void }>
   ), [estacionamientos, idCiudadFiltro, servicio]);
   const varias = new Set(sitiosPosibles.map((e) => e.id_ciudad)).size > 1;
 
+  // A domicilio (pedidos por teléfono): sectores con equipo móvil de la ciudad del filtro
+  const [sectores, setSectores] = useState<Sector[]>([]);
+  const [aDomicilio, setADomicilio] = useState(false);
+  const [domicilio, setDomicilio] = useState<DatosDomicilio>(DOMICILIO_VACIO);
+  const recargo = aDomicilio ? sectores.find((x) => x.id === domicilio.id_sector)?.recargo ?? 0 : 0;
+  useEffect(() => {
+    api.get('/public/sectores', { params: idCiudadFiltro ? { id_ciudad: idCiudadFiltro } : {} })
+      .then((r) => setSectores(r.data))
+      .catch(() => setSectores([]));
+  }, [idCiudadFiltro]);
+  useEffect(() => { if (servicio?.modalidad !== 'expreso') setADomicilio(false); }, [servicio]);
+
   // Cambiar de expreso a profunda (o al revés) invalida el sitio elegido; con
   // un único taller posible, se elige solo
   useEffect(() => {
@@ -105,17 +118,17 @@ const ModalNuevaReserva: React.FC<{ onClose: () => void; onCreada: () => void }>
   // Disponibilidad (con la duración total: servicio para ese tipo + adicionales)
   useEffect(() => {
     if (!servicio || !tarifa) { setFranjas([]); return; }
-    if (!estacionamientoId) { setFranjas([]); return; }
+    if (aDomicilio ? !domicilio.id_sector : !estacionamientoId) { setFranjas([]); return; }
     setCargandoFranjas(true);
     setFranjaSel(null);
-    const params: any = {
-      fecha, modalidad: servicio.modalidad, duracion_min: total.duracion, id_estacionamiento: estacionamientoId
-    };
+    const params: any = aDomicilio
+      ? { fecha, modalidad: 'remoto', duracion_min: total.duracion, id_sector: domicilio.id_sector }
+      : { fecha, modalidad: servicio.modalidad, duracion_min: total.duracion, id_estacionamiento: estacionamientoId };
     api.get('/agenda/disponibilidad', { params })
       .then((r) => setFranjas(r.data.franjas || []))
       .catch((e) => setError(e.message))
       .finally(() => setCargandoFranjas(false));
-  }, [fecha, servicio, tarifa, total.duracion, estacionamientoId]);
+  }, [fecha, servicio, tarifa, total.duracion, estacionamientoId, aDomicilio, domicilio.id_sector]);
 
   // Vehículo registrado antes del catálogo de tipos: se completa aquí mismo
   const asignarTipo = async (idTipo: number) => {
@@ -140,7 +153,7 @@ const ModalNuevaReserva: React.FC<{ onClose: () => void; onCreada: () => void }>
         fecha,
         hora_inicio: franjaSel.hora_inicio,
         adicionales: adicionalesSel,
-        id_estacionamiento: estacionamientoId
+        ...(aDomicilio ? { a_domicilio: domicilio } : { id_estacionamiento: estacionamientoId })
       };
       const r = await api.post('/reservas', body);
       setExito(r.data);
@@ -152,7 +165,7 @@ const ModalNuevaReserva: React.FC<{ onClose: () => void; onCreada: () => void }>
     }
   };
 
-  const listo = cliente && servicio && tarifa && vehiculoId && franjaSel;
+  const listo = cliente && servicio && tarifa && vehiculoId && franjaSel && (!aDomicilio || domicilioCompleto(domicilio));
 
   if (exito) {
     return (
@@ -285,12 +298,18 @@ const ModalNuevaReserva: React.FC<{ onClose: () => void; onCreada: () => void }>
               </select>
 
               {servicio ? (
-                <select value={estacionamientoId} onChange={(e) => setEstacionamientoId(e.target.value ? Number(e.target.value) : '')}
+                <select value={aDomicilio ? 'domicilio' : estacionamientoId}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setADomicilio(v === 'domicilio');
+                    setEstacionamientoId(v && v !== 'domicilio' ? Number(v) : '');
+                  }}
                   className="px-3 py-2 border border-slate-300 rounded-lg">
                   <option value="">{servicio.modalidad === 'profunda' ? 'Seleccione el taller…' : 'Seleccione el estacionamiento…'}</option>
                   {sitiosPosibles.map((e) => (
                     <option key={e.id} value={e.id}>{e.nombre}{varias && e.ciudad ? ` · ${e.ciudad.nombre}` : ''}</option>
                   ))}
+                  {servicio.modalidad === 'expreso' && sectores.length > 0 && <option value="domicilio">A domicilio (equipo móvil)</option>}
                 </select>
               ) : <span />}
 
@@ -316,9 +335,16 @@ const ModalNuevaReserva: React.FC<{ onClose: () => void; onCreada: () => void }>
               </div>
             )}
 
+            {aDomicilio && (
+              <div className="mb-3 border rounded-lg p-3 bg-slate-50">
+                <FormDomicilio sectores={sectores} valor={domicilio} onChange={setDomicilio} />
+              </div>
+            )}
+
             {tarifa && (
               <p className="text-sm text-slate-600 mb-2">
-                Total <strong>{dinero(total.precio)}</strong> · duración {total.duracion} min
+                Total <strong>{dinero(total.precio + recargo)}</strong> · duración {total.duracion} min
+                {recargo > 0 && <span className="text-slate-400"> (incluye {dinero(recargo)} de recargo a domicilio)</span>}
               </p>
             )}
 
@@ -327,7 +353,9 @@ const ModalNuevaReserva: React.FC<{ onClose: () => void; onCreada: () => void }>
                 <p className="text-sm text-slate-400">Consultando disponibilidad…</p>
               ) : franjas.length === 0 ? (
                 <p className="text-sm text-slate-400">
-                  {!estacionamientoId
+                  {aDomicilio
+                    ? (domicilio.id_sector ? 'No hay horarios del equipo para ese día.' : 'Elija el sector para ver los horarios del equipo.')
+                    : !estacionamientoId
                     ? (sitiosPosibles.length === 0
                       ? (servicio.modalidad === 'profunda' ? 'No hay talleres en esta ciudad.' : 'No hay sitios con expreso en esta ciudad.')
                       : servicio.modalidad === 'profunda' ? 'Elija el taller para ver los horarios.' : 'Elija un estacionamiento para ver los horarios.')

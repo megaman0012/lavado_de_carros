@@ -2,6 +2,50 @@
 
 ## [Sin publicar]
 
+### 2026-10-12 (3) — Lavado remoto a domicilio (fase 3, pendiente de desplegar)
+
+#### Agregado
+- **Lavado a domicilio** (modalidad `remoto`): para servicios expreso, el
+  cliente elige "A domicilio" en el paso Lugar, su sector y su dirección, y
+  confirma que hay toma de agua y de luz (a domicilio las pone él, salvo que el
+  equipo las lleve). También desde "Nueva reserva" del panel, para pedidos por
+  teléfono.
+- **Sectores** (`Sector`): zonas de cada ciudad con su tiempo de traslado y su
+  **recargo**, que se suma una vez por visita. Sin mínimo de carros.
+- **Equipos móviles** (`UnidadMovil`): ciudad, horario, carros a la vez, si
+  llevan agua o energía, y sus lavadores. **Los lavadores de un equipo no suman
+  al expreso de la ciudad.** Hace una visita a la vez y queda ocupado de la
+  salida al regreso: traslado + lavado + traslado.
+- **Visitas** (`Visita`): programada → en camino (se avisa al cliente por
+  WhatsApp/SMS y correo) → llegada con el GPS del celular (queda como prueba y
+  se mide la distancia a la dirección) → completada o **fallida**.
+- **Visita fallida**: sus reservas pasan al estado `fallida` y se cobra el
+  porcentaje del parámetro `remoto.cargo_visita_fallida_pct` (100 %, editable
+  por el admin). Se paga como cualquier lavado (contado o corte de empresa); no
+  cuenta como lavado pero sí suma al facturado.
+- Pantalla **Lavado remoto**: hoja de ruta del día, equipos, sectores, el cargo
+  por visita fallida y la productividad (visitas, % del tiempo en traslados,
+  recargos, ingresos y causas de las fallidas).
+- **Mis trabajos** del lavador: dirección, referencia, contacto (llamar con un
+  toque), mapa, y los botones Salí / Llegué / No se pudo lavar. Ve las visitas
+  de todo su equipo.
+- `Reserva.id_ciudad`: cada reserva guarda su ciudad (la de su sitio o la del
+  sector). Los filtros por ciudad, el alcance del operador y los reportes la
+  usan, así un lavado a domicilio cuenta en su ciudad.
+- Permisos de ubicación en la APK (rigen al recompilarla).
+- 16 pruebas nuevas (267 en total).
+
+#### A tener en cuenta
+- **En el navegador, el GPS necesita HTTPS.** Mientras el sistema esté en HTTP,
+  "Usar mi ubicación" y la marca de llegada funcionan solo en la APK; en la web
+  la llegada se registra sin coordenadas.
+
+#### Migración
+`backend/prisma/migraciones/2026-10-12_lavado_remoto.sql`: tablas nuevas,
+`Reserva.id_ciudad` llenada con la ciudad del sitio de cada reserva, y el
+parámetro del cargo al 100 %. Probada sobre una copia de producción (el esquema
+coincide exacto).
+
 ### 2026-10-12 (2) — Clientes empresa: flota, tarifas y corte mensual (fase 2, pendiente de desplegar)
 
 #### Agregado

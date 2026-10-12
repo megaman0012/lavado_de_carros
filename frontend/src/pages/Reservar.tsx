@@ -7,7 +7,8 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Logo from '../components/Logo';
 import FormVehiculo, { IconoTipo, SelectorTipoVehiculo, useTiposVehiculo } from '../components/FormVehiculo';
-import { TipoServicio, Estacionamiento, Vehiculo, FranjaDisponibilidad, ServicioAdicional, Ciudad } from '../types';
+import { TipoServicio, Estacionamiento, Vehiculo, FranjaDisponibilidad, ServicioAdicional, Ciudad, Sector, DatosDomicilio } from '../types';
+import FormDomicilio, { DOMICILIO_VACIO, domicilioCompleto } from '../components/FormDomicilio';
 import { hoyISO, fechaLarga, proximosDias, partesDia } from '../utils/fechas';
 import { tarifaPara, dinero, totales } from '../utils/catalogo';
 
@@ -18,7 +19,8 @@ import { tarifaPara, dinero, totales } from '../utils/catalogo';
  *   2 Servicio    ≈ la película (cartelera filtrada por el tipo de vehículo)
  *   3 Adicionales ≈ la confitería (opcional, suma precio y minutos)
  *   4 Lugar       ≈ el cine: primero la ciudad, después el estacionamiento
- *                   (o el taller de esa ciudad, para limpieza profunda)
+ *                   (o el taller de esa ciudad, para limpieza profunda), o
+ *                   A DOMICILIO: va un equipo móvil a la dirección del cliente
  *   5 Función     ≈ día y hora, con los cupos que quedan en cada franja
  *   6 Boleto      ≈ resumen con el total antes de confirmar
  *
@@ -95,13 +97,23 @@ const Reservar: React.FC = () => {
   const total = totales(tarifa, extras);
   const lugar = estacionamientos.find((e) => e.id === estacionamientoId) || null;
 
+  // A domicilio (solo expreso): sectores de la ciudad con equipo móvil
+  const [sectores, setSectores] = useState<Sector[]>([]);
+  const [aDomicilio, setADomicilio] = useState(false);
+  const [domicilio, setDomicilio] = useState<DatosDomicilio>(DOMICILIO_VACIO);
+  const sectorElegido = sectores.find((x) => x.id === domicilio.id_sector) || null;
+  const domicilioListo = aDomicilio && domicilioCompleto(domicilio);
+  const lugarListo = aDomicilio ? domicilioListo : !!estacionamientoId;
+  const recargo = aDomicilio ? sectorElegido?.recargo ?? 0 : 0;
+  const precioTotal = total.precio + recargo;
+
   // ---------- Paso en la URL ----------
   // Hasta qué paso se puede llegar con lo elegido (al recargar en ?paso=5 sin
   // datos, se vuelve al primero incompleto)
   const pasoMaximo =
     !esCliente || !vehiculo?.id_tipo_vehiculo ? 1
       : !tarifa ? 2
-      : !estacionamientoId ? 4
+      : !lugarListo ? 4
       : !franjaSel ? 5
       : 6;
   const pasoURL = parseInt(params.get('paso') || '1') || 1;
@@ -192,15 +204,26 @@ const Reservar: React.FC = () => {
     if (paso !== 5 || !servicio || !tarifa) return;
     setCargando(true);
     setError('');
-    const q: any = { fecha, modalidad: servicio.modalidad, duracion_min: total.duracion, id_estacionamiento: estacionamientoId };
+    // A domicilio la capacidad es el equipo móvil del sector (con su traslado)
+    const q: any = aDomicilio
+      ? { fecha, modalidad: 'remoto', duracion_min: total.duracion, id_sector: domicilio.id_sector }
+      : { fecha, modalidad: servicio.modalidad, duracion_min: total.duracion, id_estacionamiento: estacionamientoId };
     api.get('/agenda/disponibilidad', { params: q })
       .then((r) => setFranjas(r.data.franjas || []))
       .catch((e) => setError(e.message))
       .finally(() => setCargando(false));
-  }, [paso, fecha, servicio, tarifa, total.duracion, estacionamientoId]);
+  }, [paso, fecha, servicio, tarifa, total.duracion, estacionamientoId, aDomicilio, domicilio.id_sector]);
+
+  useEffect(() => {
+    if (!ciudadId || modalidad !== 'expreso') { setSectores([]); setADomicilio(false); return; }
+    api.get('/public/sectores', { params: { id_ciudad: ciudadId } })
+      .then((r) => setSectores(r.data))
+      .catch(() => setSectores([]));
+    setDomicilio((d) => ({ ...d, id_sector: '' }));
+  }, [ciudadId, modalidad]);
 
   // Cambiar algo que afecta la duración o el lugar invalida la hora elegida
-  useEffect(() => { setFranjaSel(null); }, [vehiculoId, servicioId, adicionalesSel, estacionamientoId, fecha]);
+  useEffect(() => { setFranjaSel(null); }, [vehiculoId, servicioId, adicionalesSel, estacionamientoId, fecha, aDomicilio, domicilio.id_sector]);
 
   // ---------- Acciones ----------
   const registrarCliente = async (e: React.FormEvent) => {
@@ -243,7 +266,7 @@ const Reservar: React.FC = () => {
         fecha,
         hora_inicio: franjaSel.hora_inicio,
         adicionales: adicionalesSel,
-        id_estacionamiento: estacionamientoId
+        ...(aDomicilio ? { a_domicilio: domicilio } : { id_estacionamiento: estacionamientoId })
       };
       const r = await api.post('/reservas', body);
       setExito(r.data);
@@ -269,7 +292,10 @@ const Reservar: React.FC = () => {
             <p>{fechaLarga(exito.fecha)} · <strong>{exito.hora_inicio}–{exito.hora_fin}</strong></p>
             <p>{exito.tipoServicio?.nombre} · {exito.vehiculo?.placa}</p>
             {exito.adicionales?.length > 0 && <p className="text-slate-500">+ {exito.adicionales.map((a: any) => a.nombre).join(', ')}</p>}
-            <p className="text-slate-500">{exito.estacionamiento?.nombre || 'Bahía de lavado'}</p>
+            <p className="text-slate-500">
+              {exito.visita ? `A domicilio · ${exito.visita.direccion}` : exito.estacionamiento?.nombre || 'Bahía de lavado'}
+            </p>
+            {exito.visita && <p className="text-xs text-slate-400">El equipo sale a las {exito.visita.hora_salida}; te avisaremos cuando vaya en camino.</p>}
             <p className="text-right text-lg font-bold text-slate-800 pt-2">{dinero(exito.precio_final)}</p>
             {exito.forma_cobro === 'credito' && <p className="text-right text-xs text-indigo-700">a crédito · corte mensual</p>}
           </div>
@@ -285,7 +311,7 @@ const Reservar: React.FC = () => {
     (paso === 1 && !!vehiculo?.id_tipo_vehiculo) ||
     (paso === 2 && !!tarifa) ||
     paso === 3 ||
-    (paso === 4 && !!estacionamientoId) ||
+    (paso === 4 && lugarListo) ||
     (paso === 5 && !!franjaSel);
 
   const tarjeta = (activo: boolean) =>
@@ -520,13 +546,27 @@ const Reservar: React.FC = () => {
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {estacionamientos.map((e) => (
-                        <button key={e.id} onClick={() => setEstacionamientoId(e.id)} className={tarjeta(estacionamientoId === e.id)}>
+                        <button key={e.id} onClick={() => { setEstacionamientoId(e.id); setADomicilio(false); }} className={tarjeta(estacionamientoId === e.id)}>
                           {e.tipo === 'privado' && <span className="text-xs font-medium text-indigo-600">Parqueadero de tu empresa</span>}
                           <h3 className="font-semibold text-slate-800">{e.nombre}</h3>
                           <p className="text-sm text-slate-500">{e.direccion}</p>
                           <p className="text-xs text-slate-400 mt-1">{e.horario_apertura} – {e.horario_cierre}</p>
                         </button>
                       ))}
+                    </div>
+                  )}
+                  {sectores.length > 0 && (
+                    <div className="mt-4">
+                      <button onClick={() => { setADomicilio(true); setEstacionamientoId(null); }} className={tarjeta(aDomicilio)}>
+                        <span className="text-xs font-medium text-emerald-600">Nuevo</span>
+                        <h3 className="font-semibold text-slate-800">A domicilio</h3>
+                        <p className="text-sm text-slate-500">Vamos con nuestro equipo a tu casa u oficina. Tiene un recargo según tu sector.</p>
+                      </button>
+                      {aDomicilio && (
+                        <div className="bg-white rounded-xl p-4 mt-3">
+                          <FormDomicilio sectores={sectores} valor={domicilio} onChange={setDomicilio} />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -606,8 +646,9 @@ const Reservar: React.FC = () => {
               <div className="flex justify-between gap-3">
                 <span className="text-slate-500">Lugar</span>
                 <span className="text-right">
-                  {servicio.modalidad === 'profunda' ? `Bahía · ${lugar?.nombre}` : lugar?.nombre}
-                  {lugar?.ciudad && <span className="block text-xs text-slate-400">{lugar.ciudad.nombre}</span>}
+                  {aDomicilio ? `A domicilio · ${domicilio.direccion}` : servicio.modalidad === 'profunda' ? `Bahía · ${lugar?.nombre}` : lugar?.nombre}
+                  {aDomicilio && sectorElegido && <span className="block text-xs text-slate-400">{sectorElegido.nombre}</span>}
+                  {!aDomicilio && lugar?.ciudad && <span className="block text-xs text-slate-400">{lugar.ciudad.nombre}</span>}
                 </span>
               </div>
               <div className="border-t border-dashed border-slate-200 pt-3 flex justify-between gap-3">
@@ -620,13 +661,24 @@ const Reservar: React.FC = () => {
                   <span>{dinero(a.precio)}</span>
                 </div>
               ))}
+              {recargo > 0 && (
+                <div className="flex justify-between gap-3 text-slate-600">
+                  <span>+ Recargo a domicilio</span>
+                  <span>{dinero(recargo)}</span>
+                </div>
+              )}
               <div className="border-t border-slate-200 pt-3 flex justify-between text-base font-bold text-slate-800">
                 <span>Total</span>
-                <span>{dinero(total.precio)}</span>
+                <span>{dinero(precioTotal)}</span>
               </div>
               {esEmpresa ? (
                 <p className="text-xs text-indigo-700 bg-indigo-50 rounded-lg px-3 py-2">
                   A crédito, con la tarifa de tu empresa: no pagas ahora. Se factura en el corte mensual.
+                </p>
+              ) : aDomicilio ? (
+                <p className="text-xs text-slate-400">
+                  El equipo sale a tu dirección antes de la hora elegida; te avisamos cuando vaya en camino.
+                  Ten lista la toma de agua y de luz: si no podemos lavar, la visita se cobra.
                 </p>
               ) : (
                 <p className="text-xs text-slate-400">
@@ -644,7 +696,7 @@ const Reservar: React.FC = () => {
           <div className="flex-1 min-w-0 text-sm">
             {tarifa ? (
               <>
-                <span className="block font-bold text-slate-800">{dinero(total.precio)}</span>
+                <span className="block font-bold text-slate-800">{dinero(precioTotal)}</span>
                 <span className="block text-xs text-slate-500 truncate">
                   {servicio?.nombre}{extras.length > 0 && ` + ${extras.length} extra${extras.length > 1 ? 's' : ''}`} · {total.duracion} min
                 </span>

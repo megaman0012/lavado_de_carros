@@ -16,10 +16,10 @@ const reservaEnAlcance = async (req, res, next) => {
   try {
     const reserva = await prisma.reserva.findUnique({
       where: { id: parseInt(req.params.id) || 0 },
-      select: { estacionamiento: { select: { id_ciudad: true } } }
+      select: { id_ciudad: true }
     });
     // Si no existe, que responda el controlador con su 404 de siempre
-    if (reserva && !alcance.puedeVer(req.usuario, reserva.estacionamiento?.id_ciudad)) {
+    if (reserva && !alcance.puedeVer(req.usuario, reserva.id_ciudad)) {
       return alcance.fueraDeAlcance(res);
     }
     next();

@@ -7,17 +7,23 @@ const prisma = require('../db');
 const agendaService = require('../services/agenda.service');
 const fechas = require('../utils/fechas');
 const alcance = require('../utils/alcance');
+const remotoService = require('../services/remoto.service');
 
 // GET /api/agenda/disponibilidad?fecha=&modalidad=&duracion_min=&id_estacionamiento=
+// A domicilio: modalidad=remoto&id_sector= (la capacidad son los equipos móviles)
 const disponibilidad = async (req, res) => {
   try {
-    const { fecha, modalidad, duracion_min, id_estacionamiento } = req.query;
+    const { fecha, modalidad, duracion_min, id_estacionamiento, id_sector } = req.query;
 
     if (!fecha || !modalidad) {
       return res.status(400).json({ success: false, message: 'fecha y modalidad son obligatorias' });
     }
-    if (!['expreso', 'profunda'].includes(modalidad)) {
+    if (!['expreso', 'profunda', 'remoto'].includes(modalidad)) {
       return res.status(400).json({ success: false, message: 'modalidad inválida' });
+    }
+    if (modalidad === 'remoto') {
+      const data = await remotoService.disponibilidad({ fecha, idSector: id_sector, duracionMin: parseInt(duracion_min) || 60 });
+      return res.json({ success: true, data });
     }
 
     const resultado = await agendaService.disponibilidadDia({
@@ -49,7 +55,7 @@ const vistaDia = async (req, res) => {
     const ciudad = alcance.ciudadFiltro(req);
     const deLaCiudad = ciudad && {
       OR: [
-        { reserva: { is: { estacionamiento: { is: { id_ciudad: ciudad } } } } },
+        { reserva: { is: { id_ciudad: ciudad } } },
         { id_reserva: null, id_ciudad: ciudad },
         { id_reserva: null, estacionamiento: { is: { id_ciudad: ciudad } } },
         { id_reserva: null, id_ciudad: null, id_estacionamiento: null }
@@ -67,7 +73,14 @@ const vistaDia = async (req, res) => {
             cliente: { select: { nombre: true, telefono: true } },
             vehiculo: { select: { placa: true, marca: true, modelo: true, color: true } },
             tipoServicio: { select: { nombre: true } },
-            estacionamiento: { select: { nombre: true, ciudad: { select: { nombre: true } } } }
+            estacionamiento: { select: { nombre: true, ciudad: { select: { nombre: true } } } },
+            ciudad: { select: { nombre: true } },
+            visita: {
+              select: {
+                id: true, codigo: true, estado: true, direccion: true, hora_salida: true, hora_regreso: true,
+                sector: { select: { nombre: true } }, unidad: { select: { nombre: true } }
+              }
+            }
           }
         },
         ciudad: { select: { id: true, nombre: true } },

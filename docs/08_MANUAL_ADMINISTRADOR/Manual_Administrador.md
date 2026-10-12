@@ -6,7 +6,8 @@ Versión 2.2 · 2026-10-12 · Reemplaza a la 2.1 (2026-10-08), la 2.0 (2026-09-2
 operador por ciudad, pantallas **Ciudades** y **Usuarios**, sitios de tipo
 taller, capacidad y bloqueos por ciudad (sección 6) y reportes por ciudad
 (sección 9). **Clientes empresa** (sección 1.3): flota, tarifas pactadas,
-parqueadero privado y cobro a crédito con **corte mensual**.
+parqueadero privado y cobro a crédito con **corte mensual**. **Lavado a domicilio**
+(sección 1.4): sectores, equipos móviles, visitas y cargo por visita fallida.
 
 **Novedades de la 2.1:** vehículos de cada cliente visibles desde Clientes
 (sección 2.1), Dashboard y Reportes ahora distintos y con filtro por mes
@@ -116,6 +117,37 @@ Un corte **cerrado o facturado se puede anular** (con motivo): sus lavados
 vuelven a quedar pendientes y entran en el próximo corte, que lleva sufijo
 (`CORTE-2026-10-E0011-2`). Uno **pagado no se anula**. La pantalla Empresas
 (y los cortes) es de **alcance nacional**: admin u operador sin ciudad.
+
+### 1.4 Lavado a domicilio (desde el 2026-10-12)
+
+Pantalla **Lavado remoto**. Para empezar en una ciudad: **Sectores** (zonas
+con su tiempo de traslado de ida y su recargo en $) y **Equipos** (horario,
+carros a la vez, si llevan agua o generador, y sus lavadores). Los clientes ven
+"A domicilio" en esa ciudad cuando hay al menos un equipo activo.
+
+| Regla | Detalle |
+|---|---|
+| Qué servicios | Solo los **expreso**; la limpieza profunda es en taller |
+| Precio | Servicio (o tarifa de la empresa) + adicionales + **recargo del sector**, una vez por visita. Sin mínimo de carros |
+| Agua y luz | A domicilio las pone el cliente: tiene que confirmarlas al pedir, salvo que el equipo las lleve |
+| Agenda del equipo | Una visita a la vez; ocupado de la **salida** (inicio − traslado) al **regreso** (fin + traslado). Bloqueos nacionales o de la ciudad también lo bloquean |
+| Lavadores | Los de un equipo **no suman** a la capacidad del expreso de su ciudad, y ven en "Mis trabajos" todas las visitas del equipo |
+| Visita fallida | El lavador (o el operador) marca "No se pudo lavar" con el motivo. Se cobra el **% configurado** (100 % por defecto; Sectores → Cargo por visita fallida, solo admin). La reserva queda `fallida`: no cuenta como lavado, sí suma al facturado, y se paga al contado o entra en el corte de la empresa |
+
+**En el día:** la **Hoja de ruta** ordena las visitas por hora de salida. Cada
+una tiene Mapa, **Salí** (avisa al cliente por WhatsApp/SMS y correo),
+**Llegué** (guarda el GPS del celular como prueba y avisa si quedó a más de
+300 m de la dirección) y **No se pudo lavar**. La visita se completa sola
+cuando se completan sus lavados.
+
+> **GPS y HTTPS:** el navegador entrega la ubicación solo en páginas HTTPS.
+> Hasta tener dominio con certificado, el GPS funciona en la **APK** (que ya
+> declara el permiso; hay que recompilarla) y en la web la llegada se registra
+> sin coordenadas.
+
+**Productividad** (por mes): visitas, fallidas, carros, % del tiempo del
+equipo que se va en traslados, recargos e ingresos por equipo y por sector, y
+las causas de las visitas fallidas.
 
 ## 2. Catálogos
 

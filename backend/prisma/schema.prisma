@@ -86,6 +86,7 @@ model Cliente {
   tarifas          TarifaEmpresa[]
   cortes           CorteEmpresa[]
   sitiosPrivados   Estacionamiento[]
+  visitas          Visita[]
 }
 
 // Precio pactado con una empresa para un servicio y tipo de vehículo. Manda
@@ -186,6 +187,101 @@ model Ciudad {
   lavadores        Lavador[]
   usuarios         Usuario[]
   bloqueos         AsignacionAgenda[]
+  reservas         Reserva[]
+  sectores         Sector[]
+  unidades         UnidadMovil[]
+}
+
+// ==================== LAVADO REMOTO (A DOMICILIO) ====================
+
+// Zona de una ciudad a la que va el equipo móvil. El tiempo de traslado
+// (ida, y lo mismo de vuelta) bloquea al equipo antes y después del lavado; el
+// recargo se suma una vez por visita al precio de los servicios.
+model Sector {
+  id           Int     @id @default(autoincrement())
+  id_ciudad    Int
+  nombre       String
+  traslado_min Int     @default(30)
+  recargo      Float   @default(0)
+  activo       Boolean @default(true)
+
+  ciudad  Ciudad   @relation(fields: [id_ciudad], references: [id])
+  visitas Visita[]
+
+  @@unique([id_ciudad, nombre])
+}
+
+// Equipo que sale a lavar a domicilio: un vehículo de apoyo y sus lavadores.
+// Hace una visita a la vez; `capacidad` es cuántos carros lava a la vez en el
+// sitio. Sus lavadores no suman capacidad al expreso de la ciudad.
+model UnidadMovil {
+  id               Int     @id @default(autoincrement())
+  nombre           String
+  id_ciudad        Int
+  capacidad        Int     @default(1)
+  horario_inicio   String  @default("07:00")
+  horario_fin      String  @default("18:00")
+  // Si lleva agua o energía propias, el cliente no necesita proveerlas
+  lleva_agua       Boolean @default(false)
+  lleva_energia    Boolean @default(false)
+  estado           String  @default("activo") // activo | mantenimiento | inactivo
+
+  ciudad    Ciudad    @relation(fields: [id_ciudad], references: [id])
+  lavadores Lavador[]
+  visitas   Visita[]
+}
+
+// Una salida del equipo a una dirección. Agrupa las reservas que se lavan ahí.
+// El equipo queda ocupado de hora_salida a hora_regreso (traslado incluido).
+// Estados: programada → en_camino → en_sitio → completada | fallida | cancelada
+model Visita {
+  id                Int       @id @default(autoincrement())
+  codigo            String    @unique // VIS-2026-00001
+  id_cliente        Int
+  id_unidad         Int
+  id_sector         Int
+  direccion         String
+  referencia        String?
+  latitud           Float?
+  longitud          Float?
+  contacto_nombre   String?
+  contacto_telefono String?
+  // El cliente confirmó que hay toma de agua y de luz (a domicilio las pone él)
+  tiene_agua        Boolean   @default(false)
+  tiene_luz         Boolean   @default(false)
+  fecha             DateTime
+  hora_salida       String
+  hora_inicio       String
+  hora_fin          String
+  hora_regreso      String
+  traslado_min      Int
+  recargo           Float     @default(0)
+  estado            String    @default("programada")
+  motivo_falla      String?
+  // Llegada marcada por el lavador desde el celular (prueba de presencia)
+  llegada_en        DateTime?
+  llegada_latitud   Float?
+  llegada_longitud  Float?
+  llegada_precision Float?
+  salida_en         DateTime? // cuándo salió (en camino)
+  fin_en            DateTime?
+  createdAt         DateTime  @default(now())
+
+  cliente  Cliente     @relation(fields: [id_cliente], references: [id])
+  unidad   UnidadMovil @relation(fields: [id_unidad], references: [id])
+  sector   Sector      @relation(fields: [id_sector], references: [id])
+  reservas Reserva[]
+
+  @@index([fecha])
+  @@index([id_unidad])
+}
+
+// Parámetros del negocio editables desde el panel (clave → valor en texto)
+model Parametro {
+  clave       String   @id
+  valor       String
+  descripcion String?
+  updatedAt   DateTime @updatedAt
 }
 
 // ==================== SITIOS Y ESPACIOS ====================
@@ -336,9 +432,12 @@ model Lavador {
   // Ciudad donde trabaja: suma capacidad expreso solo en los sitios de ella y
   // solo se le asignan reservas de ella.
   id_ciudad Int
+  // Equipo móvil al que está asignado (lavado a domicilio); con equipo no suma al expreso
+  id_unidad Int?
   estado  String  @default("activo")
 
   ciudad       Ciudad             @relation(fields: [id_ciudad], references: [id])
+  unidad       UnidadMovil?       @relation(fields: [id_unidad], references: [id])
   usuario      Usuario?
   asignaciones AsignacionAgenda[]
 
@@ -348,6 +447,8 @@ model Lavador {
 // ==================== NÚCLEO OPERATIVO ====================
 
 // Estados: solicitada → confirmada → en_proceso → completada | cancelada | no_asistio
+//          | fallida (lavado a domicilio que no se pudo hacer: se cobra el cargo de visita)
+// modalidad: expreso | profunda | remoto (a domicilio, con su Visita)
 model Reserva {
   id                 Int      @id @default(autoincrement())
   codigo             String   @unique // RES-2026-00001
@@ -355,6 +456,10 @@ model Reserva {
   id_vehiculo        Int
   id_tipo_servicio   Int
   id_estacionamiento Int?
+  // Ciudad de la reserva: la de su sitio o la del sector de su visita. De ella
+  // salen el alcance del operador y los reportes por ciudad.
+  id_ciudad          Int
+  id_visita          Int?
   id_plaza           Int?
   id_suscripcion     Int?
   modalidad          String // expreso | profunda
@@ -379,6 +484,8 @@ model Reserva {
   plaza           Plaza?             @relation(fields: [id_plaza], references: [id])
   suscripcion     Suscripcion?       @relation(fields: [id_suscripcion], references: [id])
   corte           CorteEmpresa?      @relation(fields: [id_corte], references: [id])
+  ciudad          Ciudad             @relation(fields: [id_ciudad], references: [id])
+  visita          Visita?            @relation(fields: [id_visita], references: [id])
   asignaciones    AsignacionAgenda[]
   registro        RegistroLavado?
   pagos           Pago[]
@@ -391,6 +498,8 @@ model Reserva {
   @@index([id_cliente])
   @@index([id_estacionamiento])
   @@index([id_corte])
+  @@index([id_ciudad])
+  @@index([id_visita])
 }
 
 // AGENDA: cada fila = franja ocupada. La disponibilidad se calcula
