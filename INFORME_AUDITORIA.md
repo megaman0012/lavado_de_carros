@@ -1,6 +1,6 @@
 # Informe de auditoria — LavadoCarros
 
-**Fecha:** 2026-09-15 · **Version:** 1.0
+**Fecha:** 2026-09-15 (revisado 2026-10-10) · **Version:** 1.1
 **Ruta:** `/home/server-dt/Documentos/lavado_de_carros`
 
 ---
@@ -201,3 +201,87 @@ en esta auditoria** porque cambia permisos del sistema de archivos y excede el
 alcance de "analizar y documentar".
 
 **Severidad:** 🟡 MEDIO (`OPS-03`).
+
+---
+
+## Revisión 2026-10-10
+
+**Version del informe:** 1.1 · **Codigo revisado:** `a27181b` (2026-10-08) · Solo lectura:
+no se inicio sesion en la app ni se escribio en la base.
+
+> Este repositorio es **publico**. Esta seccion describe cada falla y su correccion, pero
+> omite a proposito los pasos para reproducirla. El detalle tecnico completo esta en la
+> copia interna de la auditoria (`Documentos/AUDITORIA-2026-10-10/`, fuera del repo).
+
+### Estado general: 🔴 CRITICO
+
+El codigo mejoro mucho desde el 15-sep (helmet, refresh revocable, 203 pruebas, CI,
+respaldo diario verificado). El estado empeora por la operacion: el panel ya se usa
+desde Internet por HTTP y siguen vigentes credenciales que estan publicadas.
+El sistema sigue en piloto: 22 reservas en total, solo 4 desde el 15-sep y ninguna futura.
+
+### Pendientes del 2026-09-15
+
+| ID | Tema | Estado al 2026-10-10 |
+|---|---|---|
+| CONT-01 | Respaldo | 🟡 PARCIAL: cron diario con dump verificado y restauracion probada, pero queda en el mismo servidor, falto el del 09-oct (corte del servidor) sin alerta y la retencion mensual no funciona (LAV-N05) |
+| SEC-01 | PostgreSQL publicado en todas las interfaces | 🔴 ABIERTO y agravado: el usuario de la app es superusuario y su contrasena coincide con la versionada |
+| SEC-02 | Webhook de pagos sin firma | 🔴 ABIERTO y ya aprovechable (LAV-N01) |
+| SEC-03 | Swagger publico | 🟠 ABIERTO, ahora tambien desde Internet |
+| SEC-04 | CORS refleja cualquier origen | 🟡 ABIERTO (impacto bajo: la sesion va por Bearer) |
+| SEC-05/06 | helmet, X-Powered-By | 🟢 CERRADO en el backend; el HTML del frontend sigue sin CSP |
+| SEC-07 | `rol` como texto libre | 🟡 ABIERTO |
+| SEC-08 | Cuerpo JSON de 20 MB | 🔵 ABIERTO en el puerto directo del backend |
+| SEC-10 | Sin HTTPS | ⚪ El APK en claro es una **decision aceptada**. Por el mismo canal viajan el login del panel y el refresh de 7 dias |
+| OPS-01 | Healthchecks | 🟡 ABIERTO: en el arranque del 09-oct nginx murio antes que el backend y solo volvio por el reinicio automatico |
+| OPS-03 | Archivos de root | 🟢 CERRADO |
+| GES-01 | Sin remoto git | 🟢 Resuelto, pero el remoto es **publico** |
+| — | Cuentas del seed | 🔴 Las 4 cuentas del seed (admin incluida) siguen con la contrasena del seed |
+| — | Precios de moto / adicionales | 🟠 Siguen sin cargar |
+| — | Boton "no asistio" | 🟡 La API existe; ningun boton la llama |
+| — | Correo y Twilio | 🟡 Sin configurar: no sale ninguna notificacion |
+
+### Hallazgos nuevos
+
+| ID | Sev. | Hallazgo | Correccion |
+|---|---|---|---|
+| LAV-N01 | 🔴 | Un cliente puede dejar como **pagada** su propia reserva, por el flujo de pago con tarjeta y el webhook sin firma | Deshabilitar webhook y pago con tarjeta mientras no haya pasarela; al conectarla, firma HMAC del proveedor, no exponer la referencia interna y conciliar el monto |
+| LAV-N02 | 🔴 | Credenciales reales (seed y base de datos) en el repositorio publico, y defaults de BD y JWT en `config/index.js` | Rotar las 4 cuentas del seed y la clave de PostgreSQL; publicar 5437 solo en `127.0.0.1`; repo privado; quitar valores reales de los ejemplos y defaults del codigo |
+| LAV-N03 | 🟠 | nginx corta toda subida de mas de 1 MB (falta `client_max_body_size`): fotos de celular y comprobantes fallan | `client_max_body_size 32m` en `/api/` y redimensionar en el cliente |
+| LAV-N04 | 🟠 | "Cobrado" del mes pierde lo cobrado el ultimo dia (rango en UTC contra instantes) | Rango `[desde 00:00 EC, hasta+1 00:00 EC)` y prueba con un pago a media tarde del ultimo dia |
+| LAV-N05 | 🟠 | La retencion mensual de respaldos nunca se activa (`respaldo.sh:321`) | Leer bien el dia y conservar el primer paquete de cada mes |
+| LAV-N06 | 🟡 | El Excel/PDF de un mes trae la hoja Resumen del mes en curso | Usar el resumen del periodo |
+| LAV-N07 | 🟡 | KPIs del Dashboard sin techo de fecha y con criterios de estado distintos entre pantallas; 18 reservas pasadas siguen abiertas | Rango cerrado y un solo criterio de "lavado hecho" |
+| LAV-N08 | 🟡 | Admin y operador no pueden cambiar su contrasena desde la app | "Cambiar mi contrasena" para todos los roles |
+| LAV-N09 | 🟡 | El router reescribe la IP de origen: los limites por IP son globales | Reenvio sin SNAT o proxy de borde; captcha en el registro |
+| LAV-N10 | 🟡 | Un lavador puede crear reservas para cualquier cliente y listar vehiculos de todos | Restringir roles en esas rutas |
+| LAV-N11 | 🔵 | El cupo mensual del plan cuenta reservas de meses futuros | Rango del mes cerrado |
+| LAV-N12 | 🔵 | Reservas simultaneas de franjas distintas chocan al generar el codigo | Secuencia de BD y reintento |
+| LAV-N13 | 🔵 | Refresh en `localStorage` y HTML sin CSP | CSP en nginx; a futuro cookie httpOnly |
+| LAV-N14 | 🔵 | Logs del backend sin persistencia ni IP | Rotacion o volumen; registrar usuario e IP real |
+| LAV-N15 | 🔵 | Dependencias vulnerables (express/qs, nodemailer, axios, y ~100 de build por CRA) | `npm audit fix` sin `--force`, subir axios, migrar a Vite |
+
+### Mejoras sugeridas (priorizadas)
+
+| # | Sugerencia | Esfuerzo | Valor |
+|---|---|---|---|
+| 1 | Rotar credenciales, cerrar 5437, repo privado, apagar webhook y tarjeta (LAV-N01/N02) | S | Muy alto |
+| 2 | Subidas de mas de 1 MB y compresion en el cliente (LAV-N03) | S | Muy alto |
+| 3 | Retencion mensual, copia externa cifrada y alerta si falta un respaldo | S-M | Alto |
+| 4 | Swagger solo fuera de produccion, 3042 en `127.0.0.1`, `CORS_ORIGINS` | S | Alto |
+| 5 | Cuadre de caja: rangos en "cobrado", resumen del periodo, un criterio de estados (LAV-N04/N06/N07) | S | Alto |
+| 6 | Boton "No asistio" y cierre nocturno de reservas vencidas | S | Alto |
+| 7 | Precios de moto y catalogo de adicionales | S | Alto |
+| 8 | SMTP y recordatorios por el gateway WhatsApp propio en lugar de Twilio | M | Alto |
+| 9 | "Cambiar mi contrasena" y politica minima (LAV-N08) | S-M | Medio-alto |
+| 10 | Fidelizacion: sellos, referidos, recordatorio a los 30 dias, calificacion por WhatsApp | M | Alto |
+| 11 | Pago por QR/transferencia antes que tarjeta; luego pasarela local con webhook firmado | M-L | Alto |
+| 12 | Healthchecks con `depends_on: service_healthy` y logs con rotacion | S | Medio |
+| 13 | Roles por ruta, `rol` como enum, tope de rango en exportaciones | S-M | Medio |
+| 14 | Migrar de CRA a Vite | M | Medio |
+
+### No verificado
+
+Alcance desde Internet de 5437 y 3042 (requiere escaneo externo); LAV-N01 no se ejecuto
+(sale de leer el codigo); no se corrio la suite Jest ni se probo una restauracion; no se
+revisaron las cuentas demo ni el contenido de `HISTORIAL_CHAT.md` del repo publico.

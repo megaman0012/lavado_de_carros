@@ -15,6 +15,12 @@ dia se conserva al final, en "Antes del 2026-10-08".
 | Log | `~/respaldos/lavado_de_carros/log/respaldo.log` y `log/cron.log` |
 | Probado restaurando | **si**, 2026-10-08 — ver "Validacion" |
 
+> ⚠️ **Revision 2026-10-10 (LAV-N05):** la retencion mensual **no se activa**: el script
+> toma mal el dia del nombre del paquete (`${base:14:2}` en vez de `${base:15:2}`), asi que
+> hoy solo hay 30 diarios. Conviene ademas conservar el primer paquete de cada mes, no
+> exigir el dia 1. Pendientes: copia fuera del servidor (cifrada, el paquete lleva `.env`)
+> y alerta cuando falta un dia (el 2026-10-09 no hubo respaldo por un corte del servidor).
+
 El horario se eligio para no pisar los otros dos respaldos del servidor: TPSD
 corre los domingos a las 02:00 y Total Secure App todos los dias a las 03:00.
 

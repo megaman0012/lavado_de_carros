@@ -377,7 +377,12 @@ hasta recompilarla** y reinstalarla.
 | Script | `scripts/respaldo.sh` |
 | Cron | diario a las **03:30**, como `server-dt` |
 | Destino | `~/respaldos/lavado_de_carros/` |
-| Retención | 30 diarios + 12 mensuales |
+| Retención | 30 diarios + 12 mensuales (ver aviso) |
+
+> ⚠️ **Revisión 2026-10-10 (LAV-N05):** la retención mensual **todavía no funciona**:
+> `respaldo.sh` lee mal el día del nombre del paquete y nunca reconoce el día 1. Hasta
+> corregirlo solo existen los **30 diarios**. Además, los respaldos siguen en el mismo
+> servidor y nada avisa si falta un día (el 2026-10-09 faltó por un corte del servidor).
 
 Lo que hay que hacer de vez en cuando —toma cinco segundos:
 

@@ -1,6 +1,6 @@
 # Manual de usuario — Total Clean Car
 
-Versión 2.0 · 2026-09-27 · Reemplaza a la versión 1.0 (2026-09-15, "LavadoCarros")
+Versión 2.1 · 2026-10-08 (6.1 ampliada, 6.6 Reportes nueva) · Reemplaza a la 2.0 (2026-09-27) y a la versión 1.0 (2026-09-15, "LavadoCarros")
 
 Versión editable en línea: [Manual de usuario — Total Clean Car](https://claude.ai/code/artifact/c6c322fc-329a-4220-afd0-37126360a06f).
 Este archivo es la copia versionada para auditoría. Los cambios se registran en
