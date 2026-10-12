@@ -14,6 +14,7 @@ const prisma = require('../db');
 const fechas = require('../utils/fechas');
 const alcance = require('../utils/alcance');
 const remotoService = require('../services/remoto.service');
+const cobro = require('../services/cobro.service');
 const { enviarCorreo } = require('../services/mail.service');
 const { enviarRecordatorio } = require('../services/sms.service');
 const { aMinutos } = require('../services/agenda.service');
@@ -267,6 +268,9 @@ const enCamino = async (req, res) => {
     if (visita.reservas.every((r) => r.estado === 'cancelada')) {
       return res.status(400).json({ success: false, message: 'Todas sus reservas están canceladas' });
     }
+    // Pago anticipado: el equipo no sale a hacer lavados de contado sin cobrar
+    const conPagos = await prisma.reserva.findMany({ where: { id_visita: visita.id }, include: { pagos: true } });
+    await cobro.exigirPagado(conPagos, 'salir a la visita');
     const actualizada = await prisma.visita.update({
       where: { id: visita.id },
       data: { estado: 'en_camino', salida_en: new Date() },
@@ -392,6 +396,8 @@ const VALIDADORES = {
     const n = Number(v);
     return Number.isFinite(n) && n >= 0 && n <= 100 ? String(n) : null;
   },
+  // Pago antes del servicio (1 = obligatorio, 0 = no se exige; ver cobro.service.js)
+  'reservas.pago_anticipado': entero(0, 1),
   // Prioridad VIP y anticipación de las reservas (ver beneficios.service.js)
   'reservas.dias_anticipacion': entero(1, 365),
   'vip.cupos_reservados': entero(0, 50),

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { CalendarCheck, CheckCircle2, PlayCircle, Flag, XCircle, UserPlus, Camera, Trash2, Wallet, FileText, Plus, Paperclip, Check, Clock3 } from 'lucide-react';
 import api from '../services/api';
 import FiltroCiudad, { useFiltroCiudad } from '../components/FiltroCiudad';
+import { debeAntes, saldoDe } from '../utils/cobro';
 import { useAuth } from '../context/AuthContext';
 import { descargarActa } from '../services/descargas';
 import ModalNuevaReserva from '../components/ModalNuevaReserva';
@@ -524,6 +525,9 @@ const Reservas: React.FC = () => {
                       </span>
                       {(r.adicionales?.length ?? 0) > 0 && (
                         <span className="block text-xs text-slate-400">+ {r.adicionales!.map((a) => a.nombre).join(', ')}</span>
+                      )}
+                      {debeAntes(r) && (
+                        <span className="block text-xs text-red-600">falta pagar ${saldoDe(r).toFixed(2)} antes del lavado</span>
                       )}
                       {r.forma_cobro === 'credito' && (
                         <span className="block text-xs text-indigo-600">a crédito · {r.id_corte ? 'en corte' : 'sin cortar'}</span>

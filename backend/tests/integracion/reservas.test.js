@@ -360,11 +360,33 @@ d('Reservas', () => {
 
     const accion = (nombre, token = operador.token, cuerpo = {}) =>
       con(request(app).put(`/api/reservas/${reserva.id}/${nombre}`), token).send(cuerpo);
+    // El lavado se paga antes de hacerlo (cobro.service.js)
+    const pagar = () => con(request(app).post(`/api/reservas/${reserva.id}/pagos`), operador.token)
+      .send({ monto: reserva.precio_final, metodo: 'efectivo' });
 
     test('solicitada → confirmada → en_proceso → completada', async () => {
       expect((await accion('confirmar')).body.data.estado).toBe('confirmada');
+      await pagar();
       expect((await accion('iniciar')).body.data.estado).toBe('en_proceso');
       expect((await accion('completar')).body.data.estado).toBe('completada');
+    });
+
+    test('no se empieza a lavar sin pagar; con el pago aprobado, sí', async () => {
+      await accion('confirmar');
+      const sinPagar = await accion('iniciar');
+      expect(sinPagar.status).toBe(400);
+      expect(sinPagar.body.message).toMatch(/falta el pago de \$10\.00/);
+      // Un comprobante en verificación todavía no cuenta
+      await bd.prisma.pago.create({ data: { id_reserva: reserva.id, monto: 10, metodo: 'transferencia', estado: 'en_verificacion' } });
+      expect((await accion('iniciar')).status).toBe(400);
+      await pagar();
+      expect((await accion('iniciar')).status).toBe(200);
+    });
+
+    test('el pago anticipado se puede apagar con su parámetro', async () => {
+      await bd.prisma.parametro.create({ data: { clave: 'reservas.pago_anticipado', valor: '0' } });
+      await accion('confirmar');
+      expect((await accion('iniciar')).status).toBe(200);
     });
 
     test('no se puede saltar un paso', async () => {
@@ -411,6 +433,7 @@ d('Reservas', () => {
       await con(request(app).put(`/api/reservas/${reserva.id}/asignar-lavador`), operador.token)
         .send({ id_lavador: datos.lavador.id });
       await accion('confirmar');
+      await pagar();
 
       expect((await accion('iniciar', luis.token)).status).toBe(200);
       expect((await accion('completar', luis.token)).status).toBe(200);

@@ -152,6 +152,13 @@ d('Lavado remoto', () => {
       const trabajos = await get('/api/reservas/mis-trabajos', marta.token);
       expect(trabajos.body.data.map((x) => x.id)).toContain(r.body.data.id);
 
+      // Sin pagar, el equipo no sale
+      const sinPagar = await put(`/api/visitas/${idVisita}/en-camino`, marta.token, {});
+      expect(sinPagar.status).toBe(400);
+      expect(sinPagar.body.message).toMatch(/falta el pago/);
+      const operador = await entrar('operador');
+      await post(`/api/reservas/${r.body.data.id}/pagos`, operador.token, { monto: 13, metodo: 'efectivo' });
+
       expect((await put(`/api/visitas/${idVisita}/en-camino`, marta.token, {})).body.data.estado).toBe('en_camino');
       const llegada = await put(`/api/visitas/${idVisita}/llegada`, marta.token, { latitud: -2.1705, longitud: -79.9, precision: 12 });
       expect(llegada.body.data.estado).toBe('en_sitio');

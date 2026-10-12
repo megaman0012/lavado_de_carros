@@ -5,6 +5,7 @@ import { Reserva } from '../types';
 import { hoyISO, fechaCorta } from '../utils/fechas';
 import { urlArchivo } from '../services/config';
 import AccionesVisita from '../components/AccionesVisita';
+import { debeAntes, saldoDe } from '../utils/cobro';
 
 const coloresEstado: Record<string, string> = {
   solicitada: 'bg-amber-100 text-amber-700',
@@ -245,6 +246,11 @@ const MisTrabajos: React.FC = () => {
               )}
               {r.cliente && <p className="text-sm text-slate-500">👤 {r.cliente.nombre}{r.cliente.telefono ? ` · ${r.cliente.telefono}` : ''}</p>}
 
+              {debeAntes(r) && (
+                <p className="mt-3 text-xs bg-red-50 text-red-700 border border-red-200 rounded-lg px-3 py-2">
+                  Falta el pago de ${saldoDe(r).toFixed(2)}: el lavado se paga antes de hacerlo. No lo inicies hasta que esté pagado.
+                </p>
+              )}
               <div className="flex items-center justify-between mt-4 pt-3 border-t">
                 <button onClick={() => setModalEvidencia(r)}
                   className="flex items-center gap-1 text-sm text-purple-600 hover:text-purple-800">

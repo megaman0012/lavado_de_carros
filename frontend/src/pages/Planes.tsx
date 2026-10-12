@@ -32,6 +32,7 @@ const BarraUso: React.FC<{ usados: number; total: number }> = ({ usados, total }
 
 // ==================== PRIORIDAD VIP (parámetros) ====================
 const PARAMS = [
+  ['reservas.pago_anticipado', 'Exigir el pago antes del lavado (1 = sí, 0 = no; las empresas nunca)', 1],
   ['reservas.dias_anticipacion', 'Días que cualquier cliente puede reservar adelante', 14],
   ['vip.cupos_reservados', 'Cupos de cada franja apartados para VIP (0 = ninguno)', 0],
   ['vip.horas_liberacion', 'Horas antes de la franja en que lo apartado se libera para todos', 24]
@@ -62,7 +63,7 @@ const Prioridad: React.FC = () => {
   const admin = usuario?.rol === 'admin';
   return (
     <div className="bg-white rounded-xl shadow-sm p-5 space-y-3">
-      <h2 className="font-semibold text-slate-800">Prioridad de horario</h2>
+      <h2 className="font-semibold text-slate-800">Reglas de reserva y prioridad</h2>
       {PARAMS.map(([clave, etiqueta]) => (
         <label key={clave} className="flex items-center justify-between gap-3 text-sm">
           <span className="text-slate-600">{etiqueta}</span>

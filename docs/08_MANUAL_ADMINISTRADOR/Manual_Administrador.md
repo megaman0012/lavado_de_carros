@@ -176,6 +176,20 @@ incluidos al mes (puede ser 0 si es solo descuento), qué servicios incluye,
 En Reportes, lo cobrado por mensualidades aparece aparte de lo cobrado por
 lavados (nota de la tarjeta "Cobrado").
 
+### 1.6 Pago antes del servicio (desde el 2026-10-12)
+
+El cliente de contado **paga antes del lavado**: con saldo pendiente el sistema
+no deja **iniciar** el lavado, ni marcar **"Salí"** a un equipo a domicilio.
+Cuenta solo el pago **aprobado** (un comprobante en verificación hay que
+aprobarlo antes en "Pagos por verificar"). Confirmar la reserva no exige pago.
+Las **empresas** quedan afuera: se lavan a crédito y se cobran en el corte. Lo
+incluido en un plan ($0) no se ve afectado. Se apaga con el parámetro
+`reservas.pago_anticipado` = 0 (Planes → Reglas de reserva).
+
+> Visita a domicilio fallida con un cargo menor al 100 %: como el lavado ya
+> estaba pagado, la diferencia queda a favor del cliente (el sistema no hace
+> devoluciones; se resuelve a mano).
+
 ## 2. Catálogos
 
 | Catálogo | Entidad | Registros al 2026-09-27 |

@@ -13,6 +13,7 @@ const fechas = require('../utils/fechas');
 const alcance = require('../utils/alcance');
 const remotoService = require('../services/remoto.service');
 const beneficios = require('../services/beneficios.service');
+const cobro = require('../services/cobro.service');
 
 /**
  * Plan VIP del cliente para esta reserva:
@@ -525,7 +526,7 @@ const cambiarEstado = async (req, res) => {
 
     const reserva = await prisma.reserva.findUnique({
       where: { id: parseInt(id) },
-      include: { asignaciones: true, visita: { select: { id_unidad: true } } }
+      include: { asignaciones: true, visita: { select: { id_unidad: true } }, pagos: true }
     });
     if (!reserva) return res.status(404).json({ success: false, message: 'Reserva no encontrada' });
 
@@ -550,6 +551,14 @@ const cambiarEstado = async (req, res) => {
         success: false,
         message: `No se puede ${req.accion} una reserva en estado "${reserva.estado}"`
       });
+    }
+    // Pago anticipado: de contado, no se empieza a lavar con saldo pendiente
+    if (req.accion === 'iniciar') {
+      try {
+        await cobro.exigirPagado([reserva], 'iniciar el lavado');
+      } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+      }
     }
 
     const actualizada = await prisma.$transaction(async (tx) => {

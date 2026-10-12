@@ -443,6 +443,12 @@ const MisReservas: React.FC = () => {
                     Pago confirmado.
                   </p>
                 );
+                if (saldo > 0 && ['solicitada', 'confirmada'].includes(r.estado)) return (
+                  <p className="mt-3 text-xs bg-sky-50 text-sky-800 border border-sky-200 rounded-lg px-3 py-2">
+                    {rechazado ? 'No pudimos validar tu último comprobante. ' : ''}
+                    Paga ${saldo.toFixed(2)} antes del lavado: lo realizamos cuando el pago esté confirmado.
+                  </p>
+                );
                 if (rechazado) return (
                   <p className="mt-3 text-xs bg-red-50 text-red-600 border border-red-200 rounded-lg px-3 py-2">
                     No pudimos validar tu último comprobante. Puedes enviar otro.

@@ -314,6 +314,11 @@ const Reservar: React.FC = () => {
             {exito.visita && <p className="text-xs text-slate-400">El equipo sale a las {exito.visita.hora_salida}; te avisaremos cuando vaya en camino.</p>}
             <p className="text-right text-lg font-bold text-slate-800 pt-2">{dinero(exito.precio_final)}</p>
             {exito.forma_cobro === 'credito' && <p className="text-right text-xs text-indigo-700">a crédito · corte mensual</p>}
+            {exito.forma_cobro !== 'credito' && exito.precio_final > 0 && (
+              <p className="text-xs text-sky-800 bg-sky-50 rounded-lg px-3 py-2 mt-2">
+                El lavado se paga antes de realizarlo: transfiere y sube el comprobante desde Mis reservas.
+              </p>
+            )}
           </div>
           <div className="p-6 pt-0">
             <Link to="/mis-reservas" replace className="block text-center bg-sky-600 text-white py-2.5 rounded-lg hover:bg-sky-700">Ver mis reservas</Link>

@@ -2,6 +2,19 @@
 
 ## [Sin publicar]
 
+### 2026-10-12 (5) — Pago antes del servicio
+
+#### Agregado
+- **El lavado de contado se paga antes de hacerlo.** Con saldo pendiente no se
+  puede **iniciar** el lavado, y el equipo a domicilio no puede marcar **"Salí"**
+  si la visita tiene lavados sin pagar. Solo cuentan los pagos aprobados (un
+  comprobante en verificación todavía no). Confirmar la reserva sigue
+  permitido sin pago. **Las empresas no**: se lavan a crédito y se cobran en su
+  corte. Lo que sale $0 por un plan no se ve afectado.
+- Parámetro `reservas.pago_anticipado` (1, editable en Planes) para apagarlo.
+- Avisos en Mis trabajos (lavador), Reservas (panel), Mis reservas y el boleto.
+- 3 pruebas nuevas (285 en total).
+
 ### 2026-10-12 (4) — Planes VIP con cobro mensual (fase 4, pendiente de desplegar)
 
 #### Agregado

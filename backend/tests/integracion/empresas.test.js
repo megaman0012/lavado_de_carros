@@ -100,6 +100,13 @@ d('Empresas', () => {
       expect(r.body.data.forma_cobro).toBe('contado');
     });
 
+    test('a la empresa no se le exige pagar antes: se lava y se cobra en el corte', async () => {
+      const id = (await reservarFlota()).body.data.id;
+      const operador = await entrar('operador');
+      expect((await put(`/api/reservas/${id}/confirmar`, operador.token, {})).status).toBe(200);
+      expect((await put(`/api/reservas/${id}/iniciar`, operador.token, {})).status).toBe(200);
+    });
+
     test('un lavado a crédito no se cobra suelto', async () => {
       const id = (await reservarFlota()).body.data.id;
       const operador = await entrar('operador');
