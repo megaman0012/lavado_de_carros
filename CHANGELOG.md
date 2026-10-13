@@ -2,6 +2,16 @@
 
 ## [Sin publicar]
 
+### 2026-10-12 (6) — Una sola "Nueva reserva" para el personal y manual de usuario 3.0
+
+#### Cambiado
+- El menú **Nueva Reserva** queda solo para clientes. Al admin y al operador los
+  llevaba al asistente del cliente, que les respondía que su cuenta no podía
+  reservar; el personal reserva con el botón **Nueva reserva** de Reservas.
+- `docs/07_MANUAL_USUARIO` v3.0: ciudad en la reserva, lavado a domicilio, pago
+  antes del lavado, plan VIP, cuentas de empresa y Mi flota, equipo a domicilio
+  del lavador, bloqueos por sitio/ciudad/país y filtro por ciudad.
+
 ### 2026-10-12 (5) — Pago antes del servicio
 
 #### Agregado

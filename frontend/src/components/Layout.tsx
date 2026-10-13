@@ -27,7 +27,8 @@ const menuItems: MenuItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, roles: ['admin', 'operador'] },
   { to: '/agenda', label: 'Agenda', icon: <CalendarDays size={20} />, roles: ['admin', 'operador', 'lavador'] },
   { to: '/reservas', label: 'Reservas', icon: <CalendarCheck size={20} />, roles: ['admin', 'operador'] },
-  { to: '/reservar', label: 'Nueva Reserva', icon: <Droplets size={20} />, roles: ['admin', 'operador', 'cliente'] },
+  // El personal reserva a nombre del cliente con el botón "Nueva reserva" de Reservas
+  { to: '/reservar', label: 'Nueva Reserva', icon: <Droplets size={20} />, roles: ['cliente'] },
   { to: '/mis-reservas', label: 'Mis Reservas', icon: <Car size={20} />, roles: ['cliente'] },
   { to: '/mi-flota', label: 'Mi flota', icon: <Truck size={20} />, roles: ['cliente'], empresa: true },
   { to: '/mi-plan', label: 'Mi plan VIP', icon: <Crown size={20} />, roles: ['cliente'], persona: true },

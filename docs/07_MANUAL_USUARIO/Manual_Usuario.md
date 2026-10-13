@@ -1,6 +1,6 @@
 # Manual de usuario — Total Clean Car
 
-Versión 2.1 · 2026-10-08 (6.1 ampliada, 6.6 Reportes nueva) · Reemplaza a la 2.0 (2026-09-27) y a la versión 1.0 (2026-09-15, "LavadoCarros")
+Versión 3.0 · 2026-10-12 (ciudades, empresas, lavado a domicilio, plan VIP y pago antes del lavado) · Reemplaza a la 2.1 (2026-10-08), a la 2.0 (2026-09-27) y a la 1.0 (2026-09-15, "LavadoCarros")
 
 Versión editable en línea: [Manual de usuario — Total Clean Car](https://claude.ai/code/artifact/c6c322fc-329a-4220-afd0-37126360a06f).
 Este archivo es la copia versionada para auditoría. Los cambios se registran en
@@ -8,21 +8,27 @@ Este archivo es la copia versionada para auditoría. Los cambios se registran en
 
 ## 1. Introducción
 
-Total Clean Car permite reservar el lavado de un vehículo en su estacionamiento o en
-la bahía del taller, y coordina a quienes lo hacen. Cada persona entra con su
+Total Clean Car permite reservar el lavado de un vehículo en su estacionamiento, en
+la bahía del taller o a domicilio, en cualquiera de las ciudades donde opera, y
+coordina a quienes lo hacen. Cada persona entra con su
 usuario y ve solo las pantallas de su rol.
 
 | Rol | Qué hace | Dónde entra al iniciar sesión |
 | --- | --- | --- |
-| Cliente | Reserva lavados, paga, sigue el estado y califica | Mis Reservas |
+| Cliente (persona) | Reserva lavados, paga, sigue el estado y califica; puede tener plan VIP | Mis Reservas |
+| Cliente (empresa) | Lo mismo que una persona, pero a crédito con tarifa propia; ve el gasto de su flota | Mis Reservas |
 | Lavador | Ve sus trabajos del día, sube fotos y marca el avance | Mis Trabajos |
-| Operador | Confirma reservas, asigna lavadores y valida pagos | Dashboard (en el celular, Agenda) |
+| Operador | Confirma reservas, asigna lavadores y valida pagos, de su ciudad (o de todo el país) | Dashboard (en el celular, Agenda) |
 | Administrador | Todo lo del operador, más el catálogo, los precios y la configuración | Dashboard (en el celular, Agenda) |
 
-Hay dos modalidades de servicio:
+Hay tres formas de recibir el servicio:
 
 - **Expreso:** el lavador va al estacionamiento del cliente (edificio, condominio o empresa).
-- **Limpieza profunda:** el cliente lleva el vehículo a una bahía del taller.
+- **A domicilio:** un equipo móvil va a la casa u oficina del cliente, con un recargo según el sector.
+- **Limpieza profunda:** el cliente lleva el vehículo a una bahía del taller de su ciudad.
+
+**Todo lavado se paga antes de realizarlo** (sección 4.1). La excepción son las
+empresas: se lavan a crédito y pagan con la factura del corte mensual.
 
 Se puede usar de dos formas, con el mismo usuario y los mismos datos:
 
@@ -90,8 +96,8 @@ botón atrás (de la pantalla o del teléfono) vuelve al paso anterior sin perde
 1. **Vehículo.** Elija el vehículo que se va a lavar o toque **Registrar otro vehículo**. Al registrarlo, el **tipo** es obligatorio (moto, liviano, SUV o camioneta) y la placa también; marca, modelo y color son opcionales. Si un vehículo antiguo aparece sin tipo, elija el tipo ahí mismo.
 2. **Servicio.** Se muestran los servicios con el precio y la duración para ese tipo de vehículo. Los que no se ofrecen para ese tipo aparecen apagados con la nota "No disponible para …".
 3. **Adicionales.** Opcional. Marque los extras que quiera (por ejemplo, un encerado); cada uno suma su precio y sus minutos. Si no quiere ninguno, toque **Omitir**.
-4. **Lugar.** Para un servicio expreso, elija el estacionamiento donde está el vehículo. La limpieza profunda se hace en la bahía del taller y no pide lugar.
-5. **Función (día y hora).** Elija el día en la tira de fechas (hasta dos semanas) y luego la hora. Cada horario muestra los cupos que quedan; los agotados aparecen tachados y los de hoy que ya pasaron no se muestran.
+4. **Lugar.** Primero la **ciudad** (el teléfono la recuerda para la próxima vez). Para un servicio expreso, elija el estacionamiento donde está el vehículo o **A domicilio** (ver 3.1). La limpieza profunda se hace en el taller de esa ciudad y no pide lugar.
+5. **Función (día y hora).** Elija el día en la tira de fechas (hasta dos semanas; con plan VIP, los días que dé su plan) y luego la hora. Cada horario muestra los cupos que quedan; los agotados aparecen tachados y los de hoy que ya pasaron no se muestran.
 6. **Boleto.** Revise el resumen: vehículo, lugar, servicio, adicionales y total. Toque **Confirmar reserva**.
 
 | | |
@@ -107,10 +113,31 @@ botón atrás (de la pantalla o del teléfono) vuelve al paso anterior sin perde
 
 Al confirmar aparece el boleto con el **código de reserva** (por ejemplo
 `RES-2026-00034`) y llega un correo de recepción. La reserva queda **solicitada**
-hasta que el operador la confirma.
+hasta que el operador la confirma. El boleto recuerda que **el lavado se paga antes
+de realizarlo**: transfiera y suba el comprobante desde Mis Reservas (sección 4.1).
 
 **Si su edificio tiene un plan contratado**, el servicio principal puede salir sin
 costo; los adicionales se cobran siempre. El total final se ve al confirmar.
+
+**Si tiene plan VIP** (sección 4.5), el boleto muestra el precio tachado y lo que
+paga con su plan: "Incluido en tu plan" mientras le queden lavados del mes, o el
+descuento cuando ya los usó.
+
+### 3.1 Lavado a domicilio
+
+En el paso **Lugar**, toque **A domicilio** y complete:
+
+- **Sector:** elija el suyo de la lista. Debajo se ve el **recargo por visita** de ese sector. Si su zona no aparece, todavía no llegamos ahí.
+- **Dirección** y **referencia** (por ejemplo "portón negro, junto a la farmacia").
+- **Quién recibe al equipo** y un **teléfono de contacto**.
+- **Usar mi ubicación** es opcional y ayuda al equipo a encontrarlo; basta con la dirección.
+
+**El agua y la luz las pone usted.** Sin ellas no se puede lavar y la visita se
+cobra igual. Lo mismo si el vehículo no está o no hay acceso al lugar.
+
+El equipo sale a su dirección antes de la hora elegida. En Mis Reservas la tarjeta
+dice **"Nuestro equipo va en camino"** cuando sale. Si no se pudo lavar, la reserva
+queda como **visita fallida** con el motivo, y se cobra el cargo de visita.
 
 **Si al confirmar aparece "Franja no disponible"**, otra persona tomó el último
 cupo en ese momento: vuelva al paso 5 y elija otra hora.
@@ -133,7 +160,14 @@ y llega un correo cuando se confirma y cuando se completa. Si la empresa activó
 mensajes, el día anterior también llega un recordatorio por WhatsApp o SMS al
 teléfono registrado.
 
-### 4.1 Pagar por transferencia
+### 4.1 Pagar antes del lavado (transferencia)
+
+**El lavado se realiza cuando el pago está confirmado.** Mientras falte, la tarjeta
+dice *"Paga $X antes del lavado: lo realizamos cuando el pago esté confirmado"* y el
+lavador no puede empezar. Un comprobante "en verificación" todavía no cuenta: tiene
+que aprobarlo el operador, así que pague con tiempo, idealmente apenas reserve.
+
+Lo que sale en $0 (por su plan VIP o el plan de su edificio) no necesita pago.
 
 1. Transfiera el total a la cuenta que le indique la empresa.
 2. En la reserva toque **Pagar** y adjunte el comprobante, el monto y, si lo tiene, el número de transferencia.
@@ -141,15 +175,17 @@ teléfono registrado.
 
 El comprobante es **un solo archivo** de hasta **5 MB**: imagen (JPG, PNG, WEBP o
 GIF) o PDF. Si el operador no puede validarlo, la reserva avisa que el comprobante
-fue rechazado y puede enviar otro. También se puede pagar en efectivo al lavador;
-el operador lo registra.
+fue rechazado y puede enviar otro. También se puede pagar en efectivo en la
+oficina o al operador, que lo registra antes de que empiece el lavado.
 
 El pago con tarjeta todavía no está disponible: la pasarela de pagos no está conectada.
 
 ### 4.2 Cancelar
 
 Toque **Cancelar** en la reserva y confirme. Solo se puede mientras está
-solicitada o confirmada; una vez iniciado el lavado ya no.
+solicitada o confirmada; una vez iniciado el lavado ya no. Si ya había pagado,
+pida la devolución al operador con el código de la reserva. Si era un lavado
+incluido en su plan VIP, el lavado vuelve a su cupo del mes.
 
 ### 4.3 Ver la evidencia y descargar el acta
 
@@ -160,6 +196,44 @@ solicitada o confirmada; una vez iniciado el lavado ya no.
 
 Cuando el lavado está completado aparece **Calificar**. Elija de 1 a 5 estrellas
 y, si quiere, deje un comentario. Cada reserva se califica una sola vez.
+
+### 4.5 Plan VIP (personas)
+
+Un plan VIP se paga cada mes y da, según el plan:
+
+- **Lavados incluidos al mes**, que salen en $0.
+- **Descuento** en los lavados que pasen de ese número y en los adicionales.
+- **Prioridad:** reservar con más días de anticipación y, si la empresa lo activa, horarios apartados para VIP.
+
+Para suscribirse:
+
+1. En el menú abra **Mi plan VIP**, elija un plan y toque **Quiero este plan**.
+2. Transfiera el valor del mes y, en **Mensualidades**, toque **Subir comprobante**.
+3. Cuando el operador aprueba el pago, el plan aparece **activo este mes**.
+
+**Los beneficios rigen solo en los meses pagados.** Cada mes aparece una nueva
+mensualidad pendiente; mientras no esté aprobada, el plan dice "sin pagar este mes"
+y las reservas de ese mes se cobran a precio normal. En la misma pantalla se ve
+cuántos lavados le quedan del mes; el cupo se reinicia el día 1.
+
+**Cancelar mi plan:** lo ya pagado del mes se respeta; desde el mes siguiente deja
+de cobrarse. Las cuentas de empresa no tienen plan VIP.
+
+### 4.6 Cuentas de empresa
+
+Si su cuenta es de una empresa, la crea el administrador y la maneja una sola
+persona (el gestor de la flota). Reserva igual que una persona (sección 3), con
+estas diferencias:
+
+- **No paga al reservar.** El boleto dice "A crédito, con la tarifa de tu empresa". Todo se factura en el **corte mensual**.
+- **Precios pactados:** se ven los de su empresa, no los de lista.
+- Si su empresa tiene **parqueadero propio**, aparece en el paso Lugar como "Parqueadero de tu empresa".
+
+En **Mi flota** el gestor ve:
+
+- **Gasto del mes** (lavados completados, a su tarifa) y lo **pendiente de facturar**.
+- **Por vehículo:** cuántos lavados tuvo cada uno en el mes, con flechas para ver meses anteriores.
+- **Cortes mensuales:** cada factura con su estado (cerrado, facturado, pagado), el número de factura y el botón **Excel** con el detalle lavado por lavado.
 
 ## 5. Lavador: mis trabajos
 
@@ -183,15 +257,46 @@ Con cada trabajo:
 5. Toque **Completar**. El cliente recibe el aviso y puede calificar.
 
 **Iniciar** solo aparece cuando la reserva está confirmada, y **Completar** cuando
-está en proceso. Si un trabajo no aparece o el cliente no está, avise al operador:
+está en proceso.
+
+**No inicie un lavado sin pagar.** Si la tarjeta dice *"Falta el pago de $X: el
+lavado se paga antes de hacerlo"*, el sistema no lo deja iniciar. Pida al cliente
+que pague (o avise al operador para que registre el efectivo). Las reservas de
+empresas no muestran este aviso: van a crédito. Si un trabajo no aparece o el cliente no está, avise al operador:
 él reasigna el trabajo o cancela la reserva.
 
 El lavador también puede ver la **Agenda** del día para saber qué más está programado.
+
+### 5.1 Equipo a domicilio
+
+Las reservas a domicilio traen la dirección, la referencia, quién recibe y su
+teléfono, y estos botones:
+
+| Botón | Cuándo | Qué hace |
+| --- | --- | --- |
+| Mapa | Siempre | Abre la dirección en el mapa del celular |
+| Salí | Al salir hacia la dirección | Avisa al cliente que el equipo va en camino. No se puede si falta el pago |
+| Llegué | Al llegar | Registra la llegada (con la ubicación del celular, si la da) |
+| No se pudo lavar | Si no se puede hacer el trabajo | Pide el motivo y cierra la visita como fallida |
+
+Para **No se pudo lavar**, escriba el número de un motivo de la lista (no había
+acceso al lugar, no había toma de agua o de luz, el vehículo no estaba, el cliente
+canceló en el sitio, lluvia) o escriba otro, y confirme. La visita fallida se cobra al cliente. Después de **Llegué**, el trabajo
+sigue como cualquier otro: fotos, **Iniciar**, descripción y **Completar**.
+
+En la web, la ubicación del celular todavía no se registra (el navegador la exige
+con conexión segura HTTPS); la llegada queda registrada sin GPS.
 
 ## 6. Operador y administrador: el día a día
 
 El trabajo diario es confirmar cada reserva nueva, asignarle un lavador y validar
 los pagos. Todo se hace desde el menú de la izquierda (☰ en el celular).
+
+**Ciudades.** Un operador con ciudad asignada ve y maneja solo lo de su ciudad. El
+operador nacional y el administrador ven todo el país y tienen arriba el selector
+**Todo el país / ciudad** para mirar una sola. Todo lo de ciudades, empresas,
+lavado a domicilio, planes VIP y la regla de pago se configura según el **Manual
+de administrador** (secciones 1.2 a 1.6).
 
 ### 6.1 Dashboard
 
@@ -219,8 +324,10 @@ qué servicios vino.
 
 Muestra todo lo ocupado en un día y la capacidad (lavados expreso simultáneos y
 bahías de limpieza profunda). Para cerrar un horario por mantenimiento o un
-imprevisto, use **Bloquear franja manualmente**: indique inicio, fin y motivo, y
-toque **Bloquear**. Ese horario deja de ofrecerse a los clientes en todos los sitios.
+imprevisto, use **Bloquear franja manualmente**: elija dónde (un sitio, toda la
+ciudad o, para el alcance nacional, todo el país), indique inicio, fin y motivo, y
+toque **Bloquear**. Ese horario deja de ofrecerse solo donde se bloqueó; cada
+bloqueo de la lista dice su alcance. Bloquear todo el país pide confirmación.
 
 ### 6.3 Reservas
 
@@ -241,22 +348,30 @@ adicionales, cliente, placa y tipo de vehículo, horario, lavador y estado de pa
 | Evidencia | Ve o sube fotos y la descripción del trabajo | En proceso o completada |
 | Acta | Descarga el PDF del servicio | Siempre |
 
+La columna de pago dice **sin pagar**, **pagado $X** o **✓ pagado**. Con la regla
+de pago anticipado, **Iniciar** se rechaza mientras quede saldo: registre el
+efectivo o apruebe el comprobante primero. Las reservas de empresas (a crédito)
+no tienen esa exigencia.
+
 El estado "No asistió" existe, pero el panel todavía no tiene un botón para
 marcarlo: si el cliente no está, cancele la reserva.
 
 ### 6.4 Nueva reserva para un cliente
 
-Para quien llama por teléfono o llega sin reserva: en **Reservas** toque **Nueva reserva**.
+Para quien llama por teléfono o llega sin reserva: en **Reservas** toque **Nueva
+reserva**. Es la única forma de que el personal reserve: el menú "Nueva Reserva" es
+solo para clientes.
 
 1. Busque al cliente por nombre, correo o cédula. Si no existe, regístrelo primero en **Clientes**.
 2. Elija su vehículo o registre uno nuevo, con su tipo. Si el vehículo no tiene tipo, el formulario lo pide.
-3. Elija el servicio (cada uno muestra el precio para ese tipo de vehículo), los adicionales, el estacionamiento y la fecha.
+3. Elija el servicio (cada uno muestra el precio para ese tipo de vehículo), los adicionales, el estacionamiento —o **a domicilio**, con sector y dirección— y la fecha.
 4. Toque un horario libre y **Registrar reserva**. Se muestra el código y el total.
 
 ### 6.5 Pagos por verificar
 
-Aquí llegan los comprobantes que envían los clientes; el menú muestra cuántos hay
-pendientes. Revise la imagen o el PDF contra la cuenta bancaria y toque **Aprobar
+Aquí llegan los comprobantes que envían los clientes, de reservas y de
+mensualidades VIP; el menú muestra cuántos hay pendientes. **Revíselos pronto:**
+como el lavado se paga antes, un comprobante sin aprobar detiene el trabajo. Revise la imagen o el PDF contra la cuenta bancaria y toque **Aprobar
 pago** o **Rechazar** (con el motivo). Un comprobante no cuenta como ingreso hasta
 que se aprueba.
 
@@ -340,13 +455,17 @@ cliente le impide ingresar y reservar.
 
 ### 7.5 Lavadores
 
-Cree cada lavador con **Nuevo lavador** y su **cuenta de acceso** para que vea Mis
-Trabajos. La cantidad de lavadores activos es la capacidad de servicios expreso en
-los sitios que no tienen una capacidad propia.
+Cree cada lavador con **Nuevo lavador**, su **ciudad** y su **cuenta de acceso**
+para que vea Mis Trabajos. La cantidad de lavadores activos **de la ciudad** es la
+capacidad de servicios expreso en los sitios que no tienen una capacidad propia. Los
+lavadores que forman parte de un equipo a domicilio no cuentan para el expreso.
 
 ### 7.6 Estacionamientos
 
-Cada sitio tiene dirección, horario de apertura y cierre, y en **Configurar agenda**:
+Cada sitio tiene ciudad, tipo (**aliado**: estacionamiento de edificio o
+condominio; **taller**: bahías de limpieza profunda, uno por ciudad; **privado**: el
+parqueadero propio de una empresa), dirección, horario de apertura y cierre, y en
+**Configurar agenda**:
 
 - **Capacidad expreso:** lavados simultáneos en ese sitio (0 = la cantidad de lavadores activos).
 - **Granularidad:** cada cuánto empiezan los horarios (60 minutos por defecto).
@@ -354,12 +473,16 @@ Cada sitio tiene dirección, horario de apertura y cierre, y en **Configurar age
 El **Mapa de plazas** registra los puestos y las bahías de lavado. Las bahías
 disponibles son la capacidad de la limpieza profunda.
 
-### 7.7 Planes para edificios
+### 7.7 Planes para edificios y VIP
 
 Un plan cubre una cantidad de lavados al mes para todos los residentes de un sitio.
 Cree el plan (precio mensual, lavados incluidos, modalidad) y asígnelo al
 estacionamiento. Mientras quede cupo, el servicio principal de cada reserva en ese
 sitio sale en $0. El cupo se reinicia el día 1 de cada mes.
+
+Los **planes VIP** (pestaña VIP de **Planes**) son personales: precio mensual,
+lavados incluidos, descuento y días de anticipación. Las mensualidades se generan y
+se aprueban desde ahí; el detalle está en el Manual de administrador, sección 1.5.
 
 ### 7.8 Reportes
 
@@ -379,7 +502,13 @@ lavado por lavado. Se exportan a **Excel** o **PDF**.
 | Envié el comprobante y sigue "en verificación" | El operador todavía no lo revisó. Si lo rechaza, la reserva lo indica y puede enviar otro. |
 | El comprobante no sube | Revise que sea un solo archivo, de menos de 5 MB, en imagen o PDF. |
 | No me llegan los correos | Revise la carpeta de spam. Todo lo que dice el correo también está en Mis Reservas. |
-| El lavador no puede tocar "Iniciar" | La reserva aún no está confirmada. El operador debe confirmarla primero. |
+| El lavador no puede tocar "Iniciar" | La reserva aún no está confirmada, o falta el pago. El operador debe confirmarla y el pago debe estar aprobado. |
+| Pagué y el lavado no empieza | El comprobante sigue "en verificación". Hasta que el operador lo aprueba no cuenta como pagado. |
+| No aparece la opción A domicilio | En su ciudad todavía no hay sectores con equipo móvil, o el servicio elegido no es expreso. |
+| Mi sector no está en la lista | Todavía no llegamos a esa zona. Puede reservar en un estacionamiento o en el taller. |
+| No veo días más allá de dos semanas | Es el límite general. Con plan VIP se amplía a los días de su plan, si el mes está pagado. |
+| Tengo plan VIP y me cobran precio normal | La mensualidad de ese mes no está aprobada todavía, o la reserva es de un mes que aún no pagó. |
+| Soy empresa y no veo "Pagar" | Es correcto: las empresas pagan con la factura del corte mensual. |
 | No puedo cancelar | Una vez iniciado el lavado ya no se cancela desde la app. Comuníquese con la empresa. |
 | La app no abre o dice "Error de conexión con el servidor" | Revise que el teléfono tenga internet (datos o wifi) y vuelva a intentar. Si sigue, avise al soporte. |
 | La web muestra una versión vieja | Cierre la pestaña o la app instalada y vuelva a abrirla. |
@@ -400,8 +529,13 @@ de la reserva** (por ejemplo `RES-2026-00034`): con él encuentran todo el histo
 | "…" no está disponible para este tipo de vehículo | El servicio no se ofrece a ese tipo | Elegir otro servicio |
 | El vehículo no tiene tipo registrado | Vehículo anterior al catálogo de tipos | Elegir su tipo en la tarjeta del vehículo |
 | Esta reserva no tiene saldo pendiente | Ya está pagada | No hace falta pagar |
+| No se puede iniciar el lavado: falta el pago de $X | La reserva tiene saldo | Pagar o aprobar el comprobante, y luego iniciar |
+| Paga $X antes del lavado | Recordatorio en Mis Reservas | Transferir y subir el comprobante |
+| Nuestro equipo va en camino | El equipo a domicilio salió | Tener listos el vehículo, el agua y la luz |
+| No pudimos lavar en la visita | La visita a domicilio falló | Ver el motivo; se cobra el cargo de visita |
 
 ---
 
 *Capturas tomadas el 2026-09-27 de la versión en producción y del entorno de
-prueba, solo con datos de demostración.*
+prueba, solo con datos de demostración. Las pantallas nuevas del 2026-10-12
+(ciudad, a domicilio, Mi plan VIP, Mi flota) todavía no tienen captura.*

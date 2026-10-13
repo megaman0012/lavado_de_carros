@@ -10,6 +10,7 @@
 | 3.1 | 2026-10-08 | `12_CONTINUIDAD` v2.0: el respaldo pasa de 🔴 inexistente a diario automático, con prueba de restauracion ejecutada (cierra T-50 y T-51). `08_MANUAL_ADMINISTRADOR` secciones 9 (Dashboard vs Reportes) y 13 (respaldos) reescritas. `07_MANUAL_USUARIO` 6.1 ampliada y 6.6 Reportes, nueva. `13_PRUEBAS` v2.1 (203 casos). | Desarrollo |
 | 3.0 | 2026-10-08 | Cierre de los items #14, #15 y #16 del plan de trabajo. Nuevo `16_CI_CD/CI_CD.md`. `13_PRUEBAS` v2.0 (suite automatizada de 184 casos). `05_SEGURIDAD`: SEC-05 y SEC-06 cerrados, SEC-11 agregado y cerrado. `08_MANUAL_ADMINISTRADOR` v2.1 (vehiculos por cliente, como funciona la sesion, despliegue con script). `03_DESARROLLO/API.md` y `06_BASE_DATOS` al dia. | Desarrollo |
 | 3.2 | 2026-10-10 | Revision de auditoria: `INFORME_AUDITORIA.md` v1.1 (seccion "Revision 2026-10-10", hallazgos LAV-N01 a LAV-N15). Avisos de que la retencion mensual de respaldos no funciona (LAV-N05) en `08_MANUAL_ADMINISTRADOR` y `12_CONTINUIDAD`. PDF y DOCX regenerados de Arquitectura, manuales de usuario y administrador, este historial y el informe. | Auditoria tecnica |
+| 3.3 | 2026-10-12 | `07_MANUAL_USUARIO` v3.0: ciudades, lavado a domicilio (cliente y equipo), pago antes del lavado, plan VIP, cuentas de empresa y Mi flota, bloqueos con alcance; la nueva reserva del personal queda solo en Reservas. PDF y DOCX regenerados. | Desarrollo |
 
 ## Aplicacion
 
